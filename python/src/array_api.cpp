@@ -1,5 +1,7 @@
 // Copyright © 2026 Apple Inc.
 
+#include <algorithm>
+#include <numeric>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -13,6 +15,7 @@
 #include <nanobind/stl/vector.h>
 
 #include "mlx/device.h"
+#include "mlx/ops.h"
 #include "mlx/utils.h"
 
 namespace mx = mlx::core;
@@ -100,6 +103,35 @@ bool matches_kind(const mx::Dtype& dtype, const nb::handle& kind) {
       "[__array_namespace_info__.dtypes] Unsupported dtype kind: " + value);
 }
 
+int normalize_axis(int axis, int ndim) {
+  const auto normalized = axis < 0 ? axis + ndim : axis;
+  if (normalized < 0 || normalized >= ndim) {
+    throw std::out_of_range(
+        "[moveaxis] Axis " + std::to_string(axis) +
+        " is out of bounds for array with " + std::to_string(ndim) +
+        " dimensions.");
+  }
+  return normalized;
+}
+
+std::vector<int> normalize_axes(
+    const std::vector<int>& axes,
+    int ndim,
+    const char* name) {
+  std::vector<int> normalized;
+  normalized.reserve(axes.size());
+  for (auto axis : axes) {
+    normalized.push_back(normalize_axis(axis, ndim));
+  }
+  auto unique = normalized;
+  std::sort(unique.begin(), unique.end());
+  if (std::adjacent_find(unique.begin(), unique.end()) != unique.end()) {
+    throw std::invalid_argument(
+        std::string("[moveaxis] Repeated axis in ") + name + ".");
+  }
+  return normalized;
+}
+
 } // namespace
 
 void init_array_api(nb::module_& m) {
@@ -169,4 +201,56 @@ void init_array_api(nb::module_& m) {
             }
             return nb::module_::import_("builtins").attr("tuple")(devices);
           });
+
+  m.def(
+      "moveaxis",
+      [](const mx::array& a,
+         const std::vector<int>& source,
+         const std::vector<int>& destination,
+         mx::StreamOrDevice stream) {
+        if (source.size() != destination.size()) {
+          throw std::invalid_argument(
+              "[moveaxis] Source and destination must have the same number "
+              "of axes.");
+        }
+
+        const auto ndim = static_cast<int>(a.ndim());
+        const auto source_axes = normalize_axes(source, ndim, "source");
+        const auto destination_axes =
+            normalize_axes(destination, ndim, "destination");
+
+        std::vector<int> order(ndim);
+        std::iota(order.begin(), order.end(), 0);
+        order.erase(
+            std::remove_if(
+                order.begin(),
+                order.end(),
+                [&source_axes](int axis) {
+                  return std::find(
+                             source_axes.begin(), source_axes.end(), axis) !=
+                      source_axes.end();
+                }),
+            order.end());
+
+        std::vector<std::pair<int, int>> insertions;
+        insertions.reserve(source_axes.size());
+        for (size_t index = 0; index < source_axes.size(); ++index) {
+          insertions.emplace_back(
+              destination_axes[index], source_axes[index]);
+        }
+        std::sort(insertions.begin(), insertions.end());
+        for (const auto& [destination_axis, source_axis] : insertions) {
+          order.insert(order.begin() + destination_axis, source_axis);
+        }
+        return mx::transpose(a, std::move(order), stream);
+      },
+      nb::arg(),
+      "source"_a,
+      "destination"_a,
+      nb::kw_only(),
+      "stream"_a = nb::none(),
+      nb::sig(
+          "def moveaxis(a: array, /, source: Sequence[int], "
+          "destination: Sequence[int], *, stream: StreamOrDevice = None) -> "
+          "array"));
 }

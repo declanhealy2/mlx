@@ -76,7 +76,7 @@ set_target_properties(
   core
   PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${MLX_PYTHON_BINDINGS_OUTPUT_DIRECTORY}
              # Do not append a sub-dir for multi-config generators like MSVC
-             # and XCode
+             # and XCode.
              LIBRARY_OUTPUT_DIRECTORY_RELEASE
              ${MLX_PYTHON_BINDINGS_OUTPUT_DIRECTORY}
              LIBRARY_OUTPUT_DIRECTORY_DEBUG
