@@ -9,6 +9,7 @@ namespace nb = nanobind;
 
 void init_mlx_func(nb::module_&);
 void init_array(nb::module_&);
+void init_array_api(nb::module_&);
 void init_device(nb::module_&);
 void init_stream(nb::module_&);
 void init_metal(nb::module_&);
@@ -39,6 +40,7 @@ NB_MODULE(core, m) {
   init_cuda(m);
   init_memory(m);
   init_ops(m);
+  init_array_api(m);
   init_transforms(m);
   init_random(m);
   init_fft(m);
