@@ -1,0 +1,38 @@
+name: Array API Native Changes
+
+on:
+  push:
+    branches:
+      - agent/array-api-native
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install cmake ninja nanobind setuptools wheel
+
+      - name: Build MLX from source
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: "4"
+        run: python -m pip install -e .
+
+      - name: Run focused Array API tests
+        run: python -m unittest python/tests/test_array_api.py -v
