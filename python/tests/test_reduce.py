@@ -166,6 +166,21 @@ class TestReduce(mlx_tests.MLXTestCase):
         mxsum = y.sum().item()
         self.assertEqual(npsum, mxsum)
 
+    def test_sum_dtype(self):
+        x_np = np.arange(12, dtype=np.int32).reshape(3, 4)
+        x_mx = mx.array(x_np)
+        expected_default = np.sum(x_np, axis=1, dtype=np.int32)
+        expected_float = np.sum(x_np, axis=1, dtype=np.float32)
+        for result in (mx.sum(x_mx, axis=1, dtype=None), x_mx.sum(axis=1, dtype=None)):
+            self.assertTrue(np.array_equal(result, expected_default))
+            self.assertEqual(result.dtype, mx.int32)
+        for result in (
+            mx.sum(x_mx, axis=1, dtype=mx.float32),
+            x_mx.sum(axis=1, dtype=mx.float32),
+        ):
+            self.assertTrue(np.array_equal(result, expected_float))
+            self.assertEqual(result.dtype, mx.float32)
+
     def test_many_reduction_axes(self):
 
         def check(x, axes):
