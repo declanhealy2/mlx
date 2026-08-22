@@ -300,7 +300,7 @@ svd(const array& a, bool compute_uv, StreamOrDevice s /* = {} */) {
 
 array inv_impl(const array& a, bool tri, bool upper, StreamOrDevice s) {
   check_cpu_stream(s, "[linalg::inv]");
-  check_float(a.dtype(), "[linalg::inv]");
+  check_float_or_complex(a.dtype(), "[linalg::inv]");
 
   if (a.ndim() < 2) {
     std::ostringstream msg;
@@ -581,7 +581,7 @@ void validate_lu(
     const StreamOrDevice& stream,
     const std::string& fname) {
   check_cpu_stream(stream, fname);
-  check_float(a.dtype(), fname);
+  check_float_or_complex(a.dtype(), fname);
 
   if (a.ndim() < 2) {
     std::ostringstream msg;
@@ -679,10 +679,10 @@ void validate_solve(
   }
 
   auto out_type = promote_types(a.dtype(), b.dtype());
-  if (out_type != float32 && out_type != float64) {
+  if (out_type != float32 && out_type != float64 && out_type != complex64) {
     std::ostringstream msg;
     msg << fname
-        << " Input arrays must promote to float32 or float64. "
+        << " Input arrays must promote to float32, float64, or complex64. "
            " Received arrays with type "
         << a.dtype() << " and " << b.dtype() << ".";
     throw std::invalid_argument(msg.str());
