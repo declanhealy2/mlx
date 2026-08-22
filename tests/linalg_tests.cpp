@@ -668,6 +668,20 @@ TEST_CASE("test solve") {
 
   result = linalg::solve(a, b, Device::cpu);
   CHECK(allclose(matmul(a, result), b).item<bool>());
+
+  a = array(
+      {complex64_t{1.0f, 0.0f},
+       complex64_t{0.0f, 1.0f},
+       complex64_t{0.0f, 0.0f},
+       complex64_t{1.0f, 0.0f}},
+      {2, 2});
+  b = array({complex64_t{2.0f, 3.0f}, complex64_t{4.0f, 5.0f}}, {2});
+
+  result = linalg::solve(a, b, Device::cpu);
+  auto expected =
+      array({complex64_t{7.0f, -1.0f}, complex64_t{4.0f, 5.0f}}, {2});
+  CHECK_EQ(result.dtype(), complex64);
+  CHECK(array_equal(result, expected).item<bool>());
 }
 
 TEST_CASE("test solve_triangluar") {
