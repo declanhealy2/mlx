@@ -48,7 +48,7 @@ void general_inv(T* inv, int N) {
     throw std::runtime_error(ss.str());
   }
 
-  const int lwork = workspace_size;
+  const int lwork = static_cast<int>(std::real(workspace_size));
   auto scratch = array::Data{allocator::malloc(sizeof(T) * lwork)};
 
   // Compute inverse.
@@ -151,9 +151,13 @@ void Inverse::eval_cpu(const std::vector<array>& inputs, array& output) {
     case float64:
       inverse_impl<double>(inputs[0], output, tri_, upper_, stream());
       break;
+    case complex64:
+      inverse_impl<std::complex<float>>(
+          inputs[0], output, tri_, upper_, stream());
+      break;
     default:
       throw std::runtime_error(
-          "[Inverse::eval_cpu] only supports float32 or float64.");
+          "[Inverse::eval_cpu] only supports float32, float64 or complex64.");
   }
 }
 

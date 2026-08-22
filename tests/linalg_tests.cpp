@@ -668,6 +668,19 @@ TEST_CASE("test solve") {
 
   result = linalg::solve(a, b, Device::cpu);
   CHECK(allclose(matmul(a, result), b).item<bool>());
+
+  // Test complex64 matrix and right-hand side
+  a = array(
+      {complex64_t{2.0f, 1.0f},
+       complex64_t{1.0f, -1.0f},
+       complex64_t{1.0f, 0.0f},
+       complex64_t{3.0f, 2.0f}},
+      {2, 2});
+  b = array({complex64_t{3.0f, 1.0f}, complex64_t{4.0f, 2.0f}}, {2});
+
+  result = linalg::solve(a, b, Device::cpu);
+  CHECK_EQ(result.dtype(), complex64);
+  CHECK(allclose(matmul(a, result), b).item<bool>());
 }
 
 TEST_CASE("test solve_triangluar") {

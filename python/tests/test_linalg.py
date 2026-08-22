@@ -697,6 +697,18 @@ class TestLinalg(mlx_tests.MLXTestCase):
         expected = np.linalg.solve(a, b)
         self.assertTrue(np.allclose(result, expected, rtol=1e-5, atol=1e-5))
 
+    def test_solve_complex_cpu(self):
+        a = mx.array(
+            [[2.0 + 1.0j, 1.0 - 1.0j], [1.0 + 0.0j, 3.0 + 2.0j]],
+            dtype=mx.complex64,
+        )
+        b = mx.array([3.0 + 1.0j, 4.0 + 2.0j], dtype=mx.complex64)
+
+        result = mx.linalg.solve(a, b, stream=mx.cpu)
+
+        self.assertEqual(result.dtype, mx.complex64)
+        self.assertTrue(np.allclose(result, np.linalg.solve(np.array(a), np.array(b))))
+
     def test_solve_triangular(self):
         # Test lower triangular matrix
         a = mx.array([[4.0, 0.0, 0.0], [2.0, 3.0, 0.0], [1.0, -2.0, 5.0]])
