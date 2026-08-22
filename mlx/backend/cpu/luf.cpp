@@ -110,9 +110,13 @@ void LUF::eval_cpu(
     case float64:
       luf_impl<double>(inputs[0], outputs[0], outputs[1], outputs[2], stream());
       break;
+    case complex64:
+      luf_impl<complex64_t>(
+          inputs[0], outputs[0], outputs[1], outputs[2], stream());
+      break;
     default:
       throw std::runtime_error(
-          "[LUF::eval_cpu] only supports float32 or float64.");
+          "[LUF::eval_cpu] only supports float32, float64, or complex64.");
   }
 }
 
