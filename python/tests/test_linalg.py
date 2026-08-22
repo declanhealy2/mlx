@@ -268,6 +268,10 @@ class TestLinalg(mlx_tests.MLXTestCase):
                 mx.allclose(M @ M_inv, mx.eye(M.shape[0]), rtol=0, atol=1e-5)
             )
 
+        A = mx.array([[1.0 + 0.0j, 0.0 + 0.0j], [0.0 + 0.0j, 0.0 + 1.0j]])
+        expected = mx.array([[1.0 + 0.0j, 0.0 + 0.0j], [0.0 + 0.0j, 0.0 - 1.0j]])
+        self.assertTrue(mx.array_equal(mx.linalg.inv(A, stream=mx.cpu), expected))
+
     def test_tri_inverse(self):
         for upper in (False, True):
             A = mx.array([[1, 0, 0], [6, -5, 0], [-9, 8, 7]], dtype=mx.float32)
@@ -288,6 +292,12 @@ class TestLinalg(mlx_tests.MLXTestCase):
         y2 = mx.linalg.tri_inv(x, upper=False, stream=mx.cpu)
         self.assertTrue(mx.all(y1 == mx.triu(y1)))
         self.assertTrue(mx.all(y2 == mx.tril(y2)))
+
+        A = mx.array([[1.0 + 0.0j, 0.0 + 1.0j], [0.0 + 0.0j, 1.0 + 0.0j]])
+        expected = mx.array([[1.0 + 0.0j, 0.0 - 1.0j], [0.0 + 0.0j, 1.0 + 0.0j]])
+        self.assertTrue(
+            mx.array_equal(mx.linalg.tri_inv(A, upper=True, stream=mx.cpu), expected)
+        )
 
     def test_cholesky(self):
         sqrtA = mx.array(
@@ -725,6 +735,16 @@ class TestLinalg(mlx_tests.MLXTestCase):
         result = mx.linalg.solve(a, b, stream=mx.cpu)
         expected = np.linalg.solve(a, b)
         self.assertTrue(np.allclose(result, expected, rtol=1e-5, atol=1e-5))
+
+    def test_solve_complex_cpu(self):
+        a = mx.array([[1.0 + 0.0j, 0.0 + 1.0j], [0.0 + 0.0j, 1.0 + 0.0j]])
+        b = mx.array([2.0 + 3.0j, 4.0 + 5.0j])
+
+        result = mx.linalg.solve(a, b, stream=mx.cpu)
+        expected = mx.array([7.0 - 1.0j, 4.0 + 5.0j])
+
+        self.assertEqual(result.dtype, mx.complex64)
+        self.assertTrue(mx.array_equal(result, expected))
 
     def test_solve_triangular(self):
         # Test lower triangular matrix
