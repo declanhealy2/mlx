@@ -2574,16 +2574,19 @@ void init_ops(nb::module_& m) {
       [](const mx::array& a,
          const IntOrVec& axis,
          bool keepdims,
+         std::optional<mx::Dtype> dtype,
          mx::StreamOrDevice s) {
-        return mx::sum(a, get_reduce_axes(axis, a.ndim()), keepdims, s);
+        auto values = dtype ? mx::astype(a, *dtype, s) : a;
+        return mx::sum(values, get_reduce_axes(axis, a.ndim()), keepdims, s);
       },
       "array"_a,
       "axis"_a = nb::none(),
       "keepdims"_a = false,
       nb::kw_only(),
+      "dtype"_a = nb::none(),
       "stream"_a = nb::none(),
       nb::sig(
-          "def sum(a: array, /, axis: None | int | Sequence[int] = None, keepdims: bool = False, *, stream: StreamOrDevice = None) -> array"),
+          "def sum(a: array, /, axis: None | int | Sequence[int] = None, keepdims: bool = False, *, dtype: Dtype | None = None, stream: StreamOrDevice = None) -> array"),
       R"pbdoc(
         Sum reduce the array over the given axes.
 
@@ -2594,6 +2597,7 @@ void init_ops(nb::module_& m) {
               to reducing over the entire array.
             keepdims (bool, optional): Keep reduced axes as
               singleton dimensions, defaults to `False`.
+            dtype (Dtype, optional): Cast the input to this type before summing.
 
         Returns:
             array: The output array with the corresponding axes reduced.
