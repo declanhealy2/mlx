@@ -1701,11 +1701,15 @@ array pad(
 
 array moveaxis(
     const array& a,
-    int source,
-    int destination,
+    const std::vector<int>& source,
+    const std::vector<int>& destination,
     StreamOrDevice s /* = {} */) {
-  auto check_ax = [&a](int ax) {
-    auto ndim = static_cast<int>(a.ndim());
+  if (source.size() != destination.size()) {
+    throw std::invalid_argument(
+        "[moveaxis] Source and destination must have the same number of axes.");
+  }
+  const auto ndim = static_cast<int>(a.ndim());
+  auto check_ax = [ndim](int ax) {
     if (ax < -ndim || ax >= ndim) {
       std::ostringstream msg;
       msg << "[moveaxis] Invalid axis " << ax << " for array with " << ndim
@@ -1714,16 +1718,53 @@ array moveaxis(
     }
     return ax < 0 ? ax + ndim : ax;
   };
-  source = check_ax(source);
-  destination = check_ax(destination);
-  if (source == destination) {
+
+  std::vector<int> source_axes;
+  std::vector<int> destination_axes;
+  std::set<int> source_set;
+  std::set<int> destination_set;
+  for (auto axis : source) {
+    axis = check_ax(axis);
+    if (!source_set.insert(axis).second) {
+      throw std::invalid_argument("[moveaxis] Repeated source axis.");
+    }
+    source_axes.push_back(axis);
+  }
+  for (auto axis : destination) {
+    axis = check_ax(axis);
+    if (!destination_set.insert(axis).second) {
+      throw std::invalid_argument("[moveaxis] Repeated destination axis.");
+    }
+    destination_axes.push_back(axis);
+  }
+  if (source_axes == destination_axes) {
     return a;
   }
-  std::vector<int> reorder(a.ndim());
-  std::iota(reorder.begin(), reorder.end(), 0);
-  reorder.erase(reorder.begin() + source);
-  reorder.insert(reorder.begin() + destination, source);
+
+  std::vector<int> reorder;
+  for (int axis = 0; axis < ndim; ++axis) {
+    if (!source_set.contains(axis)) {
+      reorder.push_back(axis);
+    }
+  }
+  std::vector<std::pair<int, int>> moved_axes;
+  for (size_t i = 0; i < source_axes.size(); ++i) {
+    moved_axes.emplace_back(destination_axes[i], source_axes[i]);
+  }
+  std::sort(moved_axes.begin(), moved_axes.end());
+  for (const auto& [destination_axis, source_axis] : moved_axes) {
+    reorder.insert(reorder.begin() + destination_axis, source_axis);
+  }
   return transpose(a, reorder, s);
+}
+
+array moveaxis(
+    const array& a,
+    int source,
+    int destination,
+    StreamOrDevice s /* = {} */) {
+  return moveaxis(
+      a, std::vector<int>{source}, std::vector<int>{destination}, s);
 }
 
 array swapaxes(
