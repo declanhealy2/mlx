@@ -2481,24 +2481,29 @@ void init_ops(nb::module_& m) {
       )pbdoc");
   m.def(
       "moveaxis",
-      &mx::moveaxis,
+      [](const mx::array& a,
+         const AxisOrAxes& source,
+         const AxisOrAxes& destination,
+         mx::StreamOrDevice s) {
+        return mx::moveaxis(a, get_axes(source), get_axes(destination), s);
+      },
       nb::arg(),
       "source"_a,
       "destination"_a,
       nb::kw_only(),
       "stream"_a = nb::none(),
       nb::sig(
-          "def moveaxis(a: array, /, source: int, destination: int, *, stream: StreamOrDevice = None) -> array"),
+          "def moveaxis(a: array, /, source: int | Sequence[int], destination: int | Sequence[int], *, stream: StreamOrDevice = None) -> array"),
       R"pbdoc(
-        Move an axis to a new position.
+        Move one or more axes to new positions.
 
         Args:
             a (array): Input array.
-            source (int): Specifies the source axis.
-            destination (int): Specifies the destination axis.
+            source (int or sequence of int): Specifies the source axes.
+            destination (int or sequence of int): Specifies the destination axes.
 
         Returns:
-            array: The array with the axis moved.
+            array: The array with the axis or axes moved.
       )pbdoc");
   m.def(
       "swapaxes",

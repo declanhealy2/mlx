@@ -1208,7 +1208,12 @@ void init_array(nb::module_& m) {
           "See :func:`any`.")
       .def(
           "moveaxis",
-          &mx::moveaxis,
+          [](const mx::array& a,
+             const AxisOrAxes& source,
+             const AxisOrAxes& destination,
+             mx::StreamOrDevice s) {
+            return mx::moveaxis(a, get_axes(source), get_axes(destination), s);
+          },
           "source"_a,
           "destination"_a,
           nb::kw_only(),
