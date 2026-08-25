@@ -3271,7 +3271,9 @@ void init_ops(nb::module_& m) {
   m.def(
       "broadcast_arrays",
       [](const nb::args& args, mx::StreamOrDevice s) {
-        return broadcast_arrays(nb::cast<std::vector<mx::array>>(args), s);
+        return nb::tuple(
+            nb::cast(
+                broadcast_arrays(nb::cast<std::vector<mx::array>>(args), s)));
       },
       nb::arg(),
       nb::kw_only(),
