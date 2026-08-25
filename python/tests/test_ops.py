@@ -731,9 +731,24 @@ class TestOps(mlx_tests.MLXTestCase):
         self.assertListEqual(mx.transpose(x, axes=(0, 2, 1)).tolist(), expected)
 
     def test_move_swap_axes(self):
-        x = mx.zeros((2, 3, 4))
+        x = mx.arange(24).reshape((2, 3, 4))
         self.assertEqual(mx.moveaxis(x, 0, 2).shape, (3, 4, 2))
         self.assertEqual(x.moveaxis(0, 2).shape, (3, 4, 2))
+        expected = mx.transpose(x, (2, 1, 0))
+        for moved in (
+            mx.moveaxis(x, (0, 2), (2, 0)),
+            x.moveaxis((0, 2), (2, 0)),
+        ):
+            self.assertTrue(mx.array_equal(moved, expected))
+        self.assertTrue(mx.array_equal(mx.moveaxis(x, 0, (2,)), mx.moveaxis(x, 0, 2)))
+        self.assertTrue(mx.array_equal(x.moveaxis((0,), 2), x.moveaxis(0, 2)))
+        self.assertTrue(mx.array_equal(mx.moveaxis(x, (), ()), x))
+        with self.assertRaises(ValueError):
+            mx.moveaxis(x, (0,), (0, 1))
+        with self.assertRaises(ValueError):
+            mx.moveaxis(x, (0, 0), (1, 2))
+        with self.assertRaises(ValueError):
+            mx.moveaxis(x, (0, 1), (2, 2))
         self.assertEqual(mx.swapaxes(x, 0, 2).shape, (4, 3, 2))
         self.assertEqual(x.swapaxes(0, 2).shape, (4, 3, 2))
 
