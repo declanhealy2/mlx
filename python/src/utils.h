@@ -17,6 +17,7 @@ namespace mx = mlx::core;
 namespace nb = nanobind;
 
 using IntOrVec = std::variant<std::monostate, int, std::vector<int>>;
+using AxisOrAxes = std::variant<int, std::vector<int>>;
 using ScalarOrArray = std::variant<
     nb::bool_,
     nb::int_,
@@ -39,6 +40,13 @@ inline std::vector<int> get_reduce_axes(const IntOrVec& v, int dims) {
     axes = std::get<std::vector<int>>(v);
   }
   return axes;
+}
+
+inline std::vector<int> get_axes(const AxisOrAxes& v) {
+  if (auto axis = std::get_if<int>(&v)) {
+    return {*axis};
+  }
+  return std::get<std::vector<int>>(v);
 }
 
 inline bool is_comparable_with_array(const ScalarOrArray& v) {

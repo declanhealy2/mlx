@@ -385,7 +385,12 @@ inline array transpose(
 MLX_API array
 swapaxes(const array& a, int axis1, int axis2, StreamOrDevice s = {});
 
-/** Move an axis of an array. */
+/** Move one or more axes of an array. */
+MLX_API array moveaxis(
+    const array& a,
+    const std::vector<int>& source,
+    const std::vector<int>& destination,
+    StreamOrDevice s = {});
 MLX_API array
 moveaxis(const array& a, int source, int destination, StreamOrDevice s = {});
 

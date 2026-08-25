@@ -686,6 +686,13 @@ TEST_CASE("test swap and move axes") {
   CHECK_EQ(moveaxis(a, 0, 1).shape(), Shape{3, 2, 4});
   CHECK_EQ(moveaxis(a, 0, -1).shape(), Shape{3, 4, 2});
   CHECK_EQ(moveaxis(a, -2, 2).shape(), Shape{2, 4, 3});
+  CHECK_EQ(moveaxis(a, {0, 2}, {2, 0}).shape(), Shape{4, 3, 2});
+  CHECK_EQ(
+      moveaxis(a, std::vector<int>{}, std::vector<int>{}).shape(),
+      Shape{2, 3, 4});
+  CHECK_THROWS(moveaxis(a, {0}, {0, 1}));
+  CHECK_THROWS(moveaxis(a, {0, 0}, {1, 2}));
+  CHECK_THROWS(moveaxis(a, {0, 1}, {2, 2}));
 }
 
 TEST_CASE("test transpose") {
