@@ -1677,6 +1677,7 @@ class TestOps(mlx_tests.MLXTestCase):
         for axis in [0, 1, -1]:
             parts = mx.unstack(a, axis=axis)
             expected = np.unstack(a_np, axis=axis)
+            self.assertIsInstance(parts, tuple)
             self.assertEqual(len(parts), len(expected))
             for p, e in zip(parts, expected):
                 self.assertTrue(np.array_equal(p, e))
@@ -4000,7 +4001,9 @@ class TestOps(mlx_tests.MLXTestCase):
     def test_broadcast_arrays(self):
         a = mx.array(1)
         b = mx.array(1.0)
-        a, b = mx.broadcast_arrays(a, b)
+        arrays = mx.broadcast_arrays(a, b)
+        self.assertIsInstance(arrays, tuple)
+        a, b = arrays
         self.assertEqual(a.shape, ())
         self.assertEqual(a.dtype, mx.int32)
         self.assertEqual(b.shape, ())
