@@ -10,13 +10,17 @@ namespace mlx::core {
 
 template <typename T>
 void general_inv(T* inv, int N) {
+  using LapackType = std::conditional_t<
+      std::is_same_v<T, complex64_t>,
+      std::complex<float>,
+      T>;
   int info;
   auto ipiv = array::Data{allocator::malloc(sizeof(int) * N)};
   // Compute LU factorization.
-  getrf<T>(
+  getrf<LapackType>(
       /* m = */ &N,
       /* n = */ &N,
-      /* a = */ inv,
+      /* a = */ static_cast<LapackType*>(inv),
       /* lda = */ &N,
       /* ipiv = */ static_cast<int*>(ipiv.buffer.raw_ptr()),
       /* info = */ &info);
@@ -32,7 +36,7 @@ void general_inv(T* inv, int N) {
   T workspace_size = 0;
 
   // Compute workspace size.
-  getri<T>(
+  getri<LapackType>(
       /* m = */ &N,
       /* a = */ nullptr,
       /* lda = */ &N,
@@ -52,9 +56,9 @@ void general_inv(T* inv, int N) {
   auto scratch = array::Data{allocator::malloc(sizeof(T) * lwork)};
 
   // Compute inverse.
-  getri<T>(
+  getri<LapackType>(
       /* m = */ &N,
-      /* a = */ inv,
+      /* a = */ static_cast<LapackType*>(inv),
       /* lda = */ &N,
       /* ipiv = */ static_cast<int*>(ipiv.buffer.raw_ptr()),
       /* work = */ static_cast<T*>(scratch.buffer.raw_ptr()),
@@ -70,14 +74,18 @@ void general_inv(T* inv, int N) {
 
 template <typename T>
 void tri_inv(T* inv, int N, bool upper) {
+  using LapackType = std::conditional_t<
+      std::is_same_v<T, complex64_t>,
+      std::complex<float>,
+      T>;
   const char uplo = upper ? 'L' : 'U';
   const char diag = 'N';
   int info;
-  trtri<T>(
+  trtri<LapackType>(
       /* uplo = */ &uplo,
       /* diag = */ &diag,
       /* N = */ &N,
-      /* a = */ inv,
+      /* a = */ static_cast<LapackType*>(inv),
       /* lda = */ &N,
       /* info = */ &info);
 
@@ -151,9 +159,12 @@ void Inverse::eval_cpu(const std::vector<array>& inputs, array& output) {
     case float64:
       inverse_impl<double>(inputs[0], output, tri_, upper_, stream());
       break;
+    case complex64:
+      inverse_impl<complex64_t>(inputs[0], output, tri_, upper_, stream());
+      break;
     default:
       throw std::runtime_error(
-          "[Inverse::eval_cpu] only supports float32 or float64.");
+          "[Inverse::eval_cpu] only supports float32, float64, or complex64.");
   }
 }
 

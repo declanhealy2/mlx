@@ -43,6 +43,10 @@ void luf_impl(
       stream);
 
   auto a_ptr = lu.data<T>();
+  using LapackType = std::conditional_t<
+      std::is_same_v<T, complex64_t>,
+      std::complex<float>,
+      T>;
   pivots.set_data(allocator::malloc(pivots.nbytes()));
   row_indices.set_data(allocator::malloc(row_indices.nbytes()));
   auto pivots_ptr = pivots.data<uint32_t>();
@@ -59,10 +63,10 @@ void luf_impl(
         int info;
         for (size_t i = 0; i < num_matrices; ++i) {
           // Compute LU factorization of A
-          getrf<T>(
+          getrf<LapackType>(
               /* m */ &M,
               /* n */ &N,
-              /* a */ a_ptr,
+              /* a */ static_cast<LapackType*>(a_ptr),
               /* lda */ &M,
               /* ipiv */ reinterpret_cast<int*>(pivots_ptr),
               /* info */ &info);
@@ -110,9 +114,13 @@ void LUF::eval_cpu(
     case float64:
       luf_impl<double>(inputs[0], outputs[0], outputs[1], outputs[2], stream());
       break;
+    case complex64:
+      luf_impl<complex64_t>(
+          inputs[0], outputs[0], outputs[1], outputs[2], stream());
+      break;
     default:
       throw std::runtime_error(
-          "[LUF::eval_cpu] only supports float32 or float64.");
+          "[LUF::eval_cpu] only supports float32, float64, or complex64.");
   }
 }
 
