@@ -2,6 +2,7 @@
 #include <memory>
 
 #include "mlx/backend/gpu/eval.h"
+#include "mlx/backend/metal/allocator.h"
 #include "mlx/backend/metal/device.h"
 #include "mlx/backend/metal/utils.h"
 #include "mlx/primitives.h"
@@ -54,6 +55,22 @@ void eval(array& arr) {
   // Remove the output if it was donated to by an input
   if (auto it = buffers.find(arr.data_shared_ptr()); it != buffers.end()) {
     buffers.erase(it);
+  }
+
+  if (metal::is_memory_planning()) {
+    std::vector<array> retained;
+    for (auto& in : arr.inputs()) {
+      if (buffers.contains(in.data_shared_ptr())) {
+        retained.push_back(in);
+      }
+    }
+    for (auto& sibling : arr.siblings()) {
+      if (buffers.contains(sibling.data_shared_ptr())) {
+        retained.push_back(sibling);
+      }
+    }
+    encoder.add_temporaries(std::move(retained));
+    return;
   }
 
   if (encoder.needs_commit()) {

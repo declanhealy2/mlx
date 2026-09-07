@@ -125,6 +125,19 @@ Buffer MetalAllocator::malloc(size_t size) {
     size = vm_page_size * ((size + vm_page_size - 1) / vm_page_size);
   }
 
+  if (planning_) {
+    auto* buf = device_->newBuffer(1, resource_options);
+    if (!buf) {
+      throw std::runtime_error(
+          "[metal::malloc] Unable to allocate planning buffer.");
+    }
+    planned_buffers_.insert({buf, size});
+    planned_active_memory_ += size;
+    planned_peak_memory_ =
+        std::max(planned_peak_memory_, planned_active_memory_);
+    return Buffer{static_cast<void*>(buf)};
+  }
+
   // Try the cache
   std::unique_lock lk(mutex_);
   MTL::Buffer* buf = buffer_cache_.reuse_from_cache(size);
@@ -185,6 +198,12 @@ void MetalAllocator::free(Buffer buffer) {
   if (buf == nullptr) {
     return;
   }
+  if (auto it = planned_buffers_.find(buf); it != planned_buffers_.end()) {
+    planned_active_memory_ -= it->second;
+    planned_buffers_.erase(it);
+    buf->release();
+    return;
+  }
   std::unique_lock lk(mutex_);
   active_memory_ -= buf->length();
   if (get_cache_memory() < max_pool_size_) {
@@ -201,7 +220,28 @@ void MetalAllocator::free(Buffer buffer) {
 }
 
 size_t MetalAllocator::size(Buffer buffer) const {
+  if (auto it = planned_buffers_.find(buffer.ptr());
+      it != planned_buffers_.end()) {
+    return it->second;
+  }
   return static_cast<MTL::Buffer*>(buffer.ptr())->length();
+}
+
+void MetalAllocator::begin_plan(size_t initial_live_bytes) {
+  if (planning_) {
+    throw std::runtime_error("A memory plan is already active.");
+  }
+  planning_ = true;
+  planned_active_memory_ = initial_live_bytes;
+  planned_peak_memory_ = initial_live_bytes;
+}
+
+std::pair<size_t, size_t> MetalAllocator::end_plan() {
+  if (!planning_) {
+    throw std::runtime_error("No memory plan is active.");
+  }
+  planning_ = false;
+  return {planned_peak_memory_, planned_active_memory_};
 }
 
 Buffer MetalAllocator::make_buffer(void* ptr, size_t size) {
@@ -238,6 +278,10 @@ MetalAllocator& allocator() {
   static MetalAllocator* allocator_ =
       new MetalAllocator(device(mlx::core::Device::gpu));
   return *allocator_;
+}
+
+bool is_memory_planning() {
+  return allocator().planning();
 }
 
 } // namespace metal

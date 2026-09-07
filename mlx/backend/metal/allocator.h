@@ -4,6 +4,7 @@
 
 #include <map>
 #include <mutex>
+#include <unordered_map>
 #include <vector>
 
 #include "mlx/allocator.h"
@@ -41,6 +42,11 @@ class MetalAllocator : public allocator::Allocator {
   size_t get_memory_limit();
   size_t set_wired_limit(size_t limit);
   void clear_cache();
+  void begin_plan(size_t initial_live_bytes);
+  std::pair<size_t, size_t> end_plan();
+  bool planning() const {
+    return planning_;
+  }
 
  private:
   MTL::Device* device_;
@@ -72,9 +78,15 @@ class MetalAllocator : public allocator::Allocator {
   size_t num_resources_{0};
   size_t resource_limit_{0};
 
+  bool planning_{false};
+  size_t planned_active_memory_{0};
+  size_t planned_peak_memory_{0};
+  std::unordered_map<void*, size_t> planned_buffers_;
+
   std::mutex mutex_;
 };
 
 MetalAllocator& allocator();
+bool is_memory_planning();
 
 } // namespace mlx::core::metal

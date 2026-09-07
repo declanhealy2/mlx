@@ -7,6 +7,71 @@ import mlx_tests
 
 
 class TestMemory(mlx_tests.MLXTestCase):
+    @unittest.skipIf(not mx.metal.is_available(), "Metal is not available")
+    def test_memory_plan_uses_native_graph_schedule(self):
+        graphs = {
+            "unary": (
+                lambda: mx.sin(mx.arange(16, dtype=mx.float32).reshape(4, 4)) + 1,
+                68,
+            ),
+            "reduction": (
+                lambda: mx.sum(mx.arange(16, dtype=mx.float32).reshape(4, 4), axis=1),
+                80,
+            ),
+            "matmul": (
+                lambda: (
+                    mx.arange(16, dtype=mx.float32).reshape(4, 4)
+                    @ mx.arange(16, dtype=mx.float32).reshape(4, 4).T
+                ),
+                192,
+            ),
+            "radix_fft": (lambda: mx.fft.fft(mx.arange(8, dtype=mx.float32)), 160),
+            "rader_fft": (lambda: mx.fft.fft(mx.arange(7, dtype=mx.float32)), 140),
+        }
+        for name, (graph, expected_peak) in graphs.items():
+            with self.subTest(name=name):
+                peak, retained = mx.plan_memory(graph())
+                self.assertEqual(peak, expected_peak)
+                self.assertLessEqual(retained, peak)
+
+    @unittest.skipIf(not mx.metal.is_available(), "Metal is not available")
+    def test_callable_memory_plan_includes_internal_evaluation_barriers(self):
+        def graph():
+            value = mx.zeros((4, 4), dtype=mx.float32)
+            mx.eval(value)
+            return mx.sin(value)
+
+        peak, retained = mx.plan_memory(graph)
+
+        self.assertEqual(peak, 68)
+        self.assertEqual(retained, 0)
+
+    @unittest.skipIf(not mx.metal.is_available(), "Metal is not available")
+    def test_callable_memory_plan_preserves_external_root_ownership(self):
+        value = mx.zeros((4, 4), dtype=mx.float32)
+
+        peak, retained = mx.plan_memory(
+            lambda: mx.fft.fft2(mx.sin(value)), roots=(value,)
+        )
+
+        self.assertEqual(peak, 644)
+        self.assertEqual(retained, 68)
+
+    @unittest.skipIf(not mx.metal.is_available(), "Metal is not available")
+    def test_callable_memory_plan_composes_backend_lifecycle_effects(self):
+        def graph():
+            with mx.stream(mx.gpu):
+                key = mx.random.key(7)
+                value = mx.random.normal((2, 2), key=key)
+            mx.eval(value)
+            mx.clear_cache()
+            return mx.sin(value)
+
+        peak, retained = mx.plan_memory(graph)
+
+        self.assertEqual(peak, 48)
+        self.assertEqual(retained, 0)
+
     def test_memory_info(self):
         old_limit = mx.set_cache_limit(0)
 

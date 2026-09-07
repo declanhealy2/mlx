@@ -18,6 +18,17 @@ void async_eval(Arrays&&... outputs) {
 
 MLX_API void eval(std::vector<array> outputs);
 
+struct MemoryPlan {
+  size_t peak_bytes;
+  size_t retained_bytes;
+};
+
+MLX_API MemoryPlan plan_memory(std::vector<array> outputs);
+
+MLX_API MemoryPlan plan_memory(
+    const std::function<std::vector<array>()>& function,
+    std::vector<array> roots = {});
+
 template <typename... Arrays, typename = enable_for_arrays_t<Arrays...>>
 void eval(Arrays&&... outputs) {
   eval(std::vector<array>{std::forward<Arrays>(outputs)...});

@@ -11,6 +11,7 @@
 
 #include "mlx/backend/cpu/eval.h"
 #include "mlx/backend/gpu/eval.h"
+#include "mlx/backend/metal/allocator.h"
 #include "mlx/fence.h"
 #include "mlx/memory.h"
 #include "mlx/ops.h"
@@ -366,6 +367,15 @@ void eval(std::vector<array> outputs) {
     return;
   }
 
+  if (metal::is_memory_planning()) {
+    if (std::any_of(outputs.begin(), outputs.end(), [](array& x) {
+          return x.status() == array::Status::unscheduled;
+        })) {
+      eval_impl(std::move(outputs), false);
+    }
+    return;
+  }
+
   if (std::none_of(outputs.begin(), outputs.end(), [](array& x) {
         return x.status() == array::Status::unscheduled;
       })) {
@@ -376,6 +386,72 @@ void eval(std::vector<array> outputs) {
   }
 
   eval_impl(std::move(outputs), false).wait();
+}
+
+MemoryPlan plan_memory(std::vector<array> outputs) {
+  auto& allocator = metal::allocator();
+  size_t initial_live_bytes = 0;
+  std::unordered_set<uintptr_t> visited_arrays;
+  std::unordered_set<const void*> visited_buffers;
+  std::vector<array> stack = outputs;
+  while (!stack.empty()) {
+    auto current = std::move(stack.back());
+    stack.pop_back();
+    if (!visited_arrays.insert(current.id()).second) {
+      continue;
+    }
+    if (current.has_primitive() &&
+        current.primitive().device() != Device::gpu) {
+      throw std::invalid_argument("Memory planning requires a Metal graph.");
+    }
+    if (current.status() != array::Status::unscheduled &&
+        current.buffer().ptr() != nullptr &&
+        visited_buffers.insert(current.buffer().ptr()).second) {
+      initial_live_bytes += allocator.size(current.buffer());
+    }
+    stack.insert(stack.end(), current.inputs().begin(), current.inputs().end());
+  }
+  allocator.begin_plan(initial_live_bytes);
+  try {
+    eval_impl(std::move(outputs), false);
+  } catch (...) {
+    allocator.end_plan();
+    throw;
+  }
+  auto [peak_bytes, retained_bytes] = allocator.end_plan();
+  return {peak_bytes, retained_bytes};
+}
+
+MemoryPlan plan_memory(
+    const std::function<std::vector<array>()>& function,
+    std::vector<array> roots) {
+  auto& allocator = metal::allocator();
+  size_t initial_live_bytes = 0;
+  std::unordered_set<uintptr_t> visited_arrays;
+  std::unordered_set<const void*> visited_buffers;
+  std::vector<array> stack = roots;
+  while (!stack.empty()) {
+    auto current = std::move(stack.back());
+    stack.pop_back();
+    if (!visited_arrays.insert(current.id()).second) {
+      continue;
+    }
+    if (current.status() != array::Status::unscheduled &&
+        current.buffer().ptr() != nullptr &&
+        visited_buffers.insert(current.buffer().ptr()).second) {
+      initial_live_bytes += allocator.size(current.buffer());
+    }
+    stack.insert(stack.end(), current.inputs().begin(), current.inputs().end());
+  }
+  allocator.begin_plan(initial_live_bytes);
+  try {
+    eval_impl(function(), false);
+  } catch (...) {
+    allocator.end_plan();
+    throw;
+  }
+  auto [peak_bytes, retained_bytes] = allocator.end_plan();
+  return {peak_bytes, retained_bytes};
 }
 
 std::pair<std::vector<array>, std::vector<array>> vjp(

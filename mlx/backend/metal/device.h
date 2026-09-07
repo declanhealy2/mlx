@@ -16,6 +16,8 @@
 
 namespace mlx::core::metal {
 
+bool is_memory_planning();
+
 using MTLFCList =
     std::vector<std::tuple<const void*, MTL::DataType, NS::UInteger>>;
 
@@ -57,13 +59,17 @@ class MLX_API CommandEncoder {
   void maybeInsertBarrier();
 
   void set_compute_pipeline_state(MTL::ComputePipelineState* kernel) {
-    get_command_encoder()->setComputePipelineState(kernel);
+    if (!is_memory_planning()) {
+      get_command_encoder()->setComputePipelineState(kernel);
+    }
   }
 
   template <typename Vec, typename = std::enable_if_t<is_vector_v<Vec>>>
   void set_vector_bytes(const Vec& vec, size_t nelems, int idx) {
-    get_command_encoder()->setBytes(
-        vec.data(), nelems * sizeof(typename Vec::value_type), idx);
+    if (!is_memory_planning()) {
+      get_command_encoder()->setBytes(
+          vec.data(), nelems * sizeof(typename Vec::value_type), idx);
+    }
   }
   template <typename Vec, typename = std::enable_if_t<is_vector_v<Vec>>>
   void set_vector_bytes(const Vec& vec, int idx) {
@@ -72,16 +78,22 @@ class MLX_API CommandEncoder {
 
   template <typename T>
   void set_bytes(const T* v, int n, int idx) {
-    return get_command_encoder()->setBytes(v, n * sizeof(T), idx);
+    if (!is_memory_planning()) {
+      get_command_encoder()->setBytes(v, n * sizeof(T), idx);
+    }
   }
 
   template <typename T>
   void set_bytes(const T& v, int idx) {
-    return get_command_encoder()->setBytes(&v, sizeof(T), idx);
+    if (!is_memory_planning()) {
+      get_command_encoder()->setBytes(&v, sizeof(T), idx);
+    }
   }
 
   void set_threadgroup_memory_length(size_t length, int idx) {
-    get_command_encoder()->setThreadgroupMemoryLength(length, idx);
+    if (!is_memory_planning()) {
+      get_command_encoder()->setThreadgroupMemoryLength(length, idx);
+    }
   }
 
   ConcurrentContext start_concurrent() {
