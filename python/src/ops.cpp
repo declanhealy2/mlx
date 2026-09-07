@@ -2582,7 +2582,9 @@ void init_ops(nb::module_& m) {
          std::optional<mx::Dtype> dtype,
          mx::StreamOrDevice s) {
         auto values = dtype ? mx::astype(a, *dtype, s) : a;
-        return mx::sum(values, get_reduce_axes(axis, a.ndim()), keepdims, s);
+        auto result =
+            mx::sum(values, get_reduce_axes(axis, a.ndim()), keepdims, s);
+        return dtype ? mx::astype(result, *dtype, s) : result;
       },
       "array"_a,
       "axis"_a = nb::none(),
@@ -2647,16 +2649,21 @@ void init_ops(nb::module_& m) {
       [](const mx::array& a,
          const IntOrVec& axis,
          bool keepdims,
+         std::optional<mx::Dtype> dtype,
          mx::StreamOrDevice s) {
-        return mx::prod(a, get_reduce_axes(axis, a.ndim()), keepdims, s);
+        auto values = dtype ? mx::astype(a, *dtype, s) : a;
+        auto result =
+            mx::prod(values, get_reduce_axes(axis, a.ndim()), keepdims, s);
+        return dtype ? mx::astype(result, *dtype, s) : result;
       },
       nb::arg(),
       "axis"_a = nb::none(),
       "keepdims"_a = false,
       nb::kw_only(),
+      "dtype"_a = nb::none(),
       "stream"_a = nb::none(),
       nb::sig(
-          "def prod(a: array, /, axis: None | int | Sequence[int] = None, keepdims: bool = False, *, stream: StreamOrDevice = None) -> array"),
+          "def prod(a: array, /, axis: None | int | Sequence[int] = None, keepdims: bool = False, *, dtype: Dtype | None = None, stream: StreamOrDevice = None) -> array"),
       R"pbdoc(
         An product reduction over the given axes.
 
@@ -2667,6 +2674,7 @@ void init_ops(nb::module_& m) {
               to reducing over the entire array.
             keepdims (bool, optional): Keep reduced axes as
               singleton dimensions, defaults to `False`.
+            dtype (Dtype, optional): Accumulate and return values with this type.
 
         Returns:
             array: The output array with the corresponding axes reduced.

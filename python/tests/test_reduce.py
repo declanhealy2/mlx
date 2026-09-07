@@ -166,20 +166,32 @@ class TestReduce(mlx_tests.MLXTestCase):
         mxsum = y.sum().item()
         self.assertEqual(npsum, mxsum)
 
-    def test_sum_dtype(self):
-        x_np = np.arange(12, dtype=np.int32).reshape(3, 4)
+    def test_reduction_dtype(self):
+        x_np = np.arange(1, 13, dtype=np.int32).reshape(3, 4)
         x_mx = mx.array(x_np)
-        expected_default = np.sum(x_np, axis=1, dtype=np.int32)
-        expected_float = np.sum(x_np, axis=1, dtype=np.float32)
-        for result in (mx.sum(x_mx, axis=1, dtype=None), x_mx.sum(axis=1, dtype=None)):
-            self.assertTrue(np.array_equal(result, expected_default))
-            self.assertEqual(result.dtype, mx.int32)
-        for result in (
-            mx.sum(x_mx, axis=1, dtype=mx.float32),
-            x_mx.sum(axis=1, dtype=mx.float32),
-        ):
-            self.assertTrue(np.array_equal(result, expected_float))
-            self.assertEqual(result.dtype, mx.float32)
+        for name in ("sum", "prod"):
+            np_op = getattr(np, name)
+            mx_op = getattr(mx, name)
+            method = getattr(x_mx, name)
+            for dtype in (None, mx.float32):
+                np_dtype = None if dtype is None else np.float32
+                expected = np_op(x_np, axis=1, dtype=np_dtype)
+                for result in (
+                    mx_op(x_mx, axis=1, dtype=dtype),
+                    method(axis=1, dtype=dtype),
+                ):
+                    self.assertTrue(np.array_equal(result, expected))
+                    self.assertEqual(result.dtype, mx.int32 if dtype is None else dtype)
+
+        narrow_np = np.array([200, 100], dtype=np.uint8)
+        narrow_mx = mx.array(narrow_np)
+        for name in ("sum", "prod"):
+            expected = getattr(np, name)(narrow_np, dtype=np.uint8)
+            function_result = getattr(mx, name)(narrow_mx, dtype=mx.uint8)
+            method_result = getattr(narrow_mx, name)(dtype=mx.uint8)
+            for result in (function_result, method_result):
+                self.assertEqual(result.item(), expected.item())
+                self.assertEqual(result.dtype, mx.uint8)
 
     def test_many_reduction_axes(self):
 

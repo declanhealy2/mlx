@@ -1261,8 +1261,9 @@ void init_array(nb::module_& m) {
              std::optional<mx::Dtype> dtype,
              mx::StreamOrDevice s) {
             auto values = dtype ? mx::astype(a, *dtype, s) : a;
-            return mx::sum(
-                values, get_reduce_axes(axis, a.ndim()), keepdims, s);
+            auto result =
+                mx::sum(values, get_reduce_axes(axis, a.ndim()), keepdims, s);
+            return dtype ? mx::astype(result, *dtype, s) : result;
           },
           "axis"_a = nb::none(),
           "keepdims"_a = false,
@@ -1275,12 +1276,17 @@ void init_array(nb::module_& m) {
           [](const mx::array& a,
              const IntOrVec& axis,
              bool keepdims,
+             std::optional<mx::Dtype> dtype,
              mx::StreamOrDevice s) {
-            return mx::prod(a, get_reduce_axes(axis, a.ndim()), keepdims, s);
+            auto values = dtype ? mx::astype(a, *dtype, s) : a;
+            auto result =
+                mx::prod(values, get_reduce_axes(axis, a.ndim()), keepdims, s);
+            return dtype ? mx::astype(result, *dtype, s) : result;
           },
           "axis"_a = nb::none(),
           "keepdims"_a = false,
           nb::kw_only(),
+          "dtype"_a = nb::none(),
           "stream"_a = nb::none(),
           "See :func:`prod`.")
       .def(
