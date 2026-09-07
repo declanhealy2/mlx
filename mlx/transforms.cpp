@@ -11,6 +11,7 @@
 
 #include "mlx/backend/cpu/eval.h"
 #include "mlx/backend/gpu/eval.h"
+#include "mlx/backend/metal/allocator.h"
 #include "mlx/fence.h"
 #include "mlx/memory.h"
 #include "mlx/ops.h"
@@ -25,6 +26,110 @@ namespace mlx::core {
 static constexpr int MAX_ACTIVE_TASKS = 10;
 
 namespace {
+
+thread_local bool memory_plan_capture{false};
+
+class MemoryPlanCapture {
+ public:
+  MemoryPlanCapture() {
+    if (memory_plan_capture) {
+      throw std::runtime_error("A memory planning capture is already active.");
+    }
+    memory_plan_capture = true;
+  }
+
+  ~MemoryPlanCapture() {
+    memory_plan_capture = false;
+  }
+};
+
+array copy_memory_plan_input(const array& original) {
+  auto result = array(
+      allocator::Buffer(nullptr),
+      original.shape(),
+      original.dtype(),
+      [](allocator::Buffer) {});
+  result.copy_shared_buffer(original);
+  return result;
+}
+
+std::vector<array> clone_memory_plan_graph(const std::vector<array>& outputs) {
+  std::unordered_map<uintptr_t, array> copies;
+  std::function<array(const array&)> copy = [&](const array& original) {
+    if (auto it = copies.find(original.id()); it != copies.end()) {
+      return it->second;
+    }
+    if (original.status() != array::Status::unscheduled) {
+      if (original.has_primitive() &&
+          original.primitive().device() != Device::gpu) {
+        throw std::invalid_argument("Memory planning requires a Metal graph.");
+      }
+      auto result = copy_memory_plan_input(original);
+      copies.emplace(original.id(), result);
+      return result;
+    }
+    if (!original.has_primitive() ||
+        original.primitive().device() != Device::gpu) {
+      throw std::invalid_argument("Memory planning requires a Metal graph.");
+    }
+    std::vector<array> inputs;
+    inputs.reserve(original.inputs().size());
+    for (const auto& input : original.inputs()) {
+      inputs.push_back(copy(input));
+    }
+    auto original_outputs = original.outputs();
+    if (original_outputs.size() == 1) {
+      auto result = array(
+          original.shape(),
+          original.dtype(),
+          original.primitive_ptr(),
+          std::move(inputs));
+      copies.emplace(original.id(), result);
+      return result;
+    }
+    std::vector<Shape> shapes;
+    std::vector<Dtype> dtypes;
+    shapes.reserve(original_outputs.size());
+    dtypes.reserve(original_outputs.size());
+    for (const auto& output : original_outputs) {
+      shapes.push_back(output.shape());
+      dtypes.push_back(output.dtype());
+    }
+    auto results = array::make_arrays(
+        std::move(shapes), dtypes, original.primitive_ptr(), inputs);
+    for (size_t i = 0; i < original_outputs.size(); ++i) {
+      copies.emplace(original_outputs[i].id(), results[i]);
+    }
+    return copies.at(original.id());
+  };
+  std::vector<array> result;
+  result.reserve(outputs.size());
+  for (const auto& output : outputs) {
+    result.push_back(copy(output));
+  }
+  return result;
+}
+
+size_t memory_plan_initial_live_bytes(const std::vector<array>& outputs) {
+  size_t bytes = 0;
+  std::unordered_set<uintptr_t> visited_arrays;
+  std::unordered_set<const void*> visited_buffers;
+  std::vector<array> stack = outputs;
+  while (!stack.empty()) {
+    auto current = std::move(stack.back());
+    stack.pop_back();
+    if (!visited_arrays.insert(current.id()).second) {
+      continue;
+    }
+    if (current.status() != array::Status::unscheduled &&
+        current.buffer().ptr() != nullptr &&
+        visited_buffers.insert(current.buffer().ptr()).second) {
+      bytes += metal::allocator().size(current.buffer());
+    }
+    stack.insert(stack.end(), current.inputs().begin(), current.inputs().end());
+  }
+  return bytes;
+}
 
 // Create a tracer copy of a primal for use in vjp/jvp. If the primal is a
 // stale Copy from a previous transform call (not an active tracer), peel it
@@ -348,6 +453,10 @@ array eval_impl(std::vector<array> outputs, bool async) {
 }
 
 void async_eval(std::vector<array> outputs) {
+  if (memory_plan_capture) {
+    throw std::invalid_argument(
+        "[plan_memory] Evaluation inside a planned function is not supported.");
+  }
   if (outputs.empty()) {
     return;
   }
@@ -362,6 +471,10 @@ void async_eval(std::vector<array> outputs) {
 }
 
 void eval(std::vector<array> outputs) {
+  if (memory_plan_capture) {
+    throw std::invalid_argument(
+        "[plan_memory] Evaluation inside a planned function is not supported.");
+  }
   if (outputs.empty()) {
     return;
   }
@@ -376,6 +489,33 @@ void eval(std::vector<array> outputs) {
   }
 
   eval_impl(std::move(outputs), false).wait();
+}
+
+MemoryPlan plan_memory(std::vector<array> outputs) {
+  if (memory_plan_capture) {
+    throw std::invalid_argument(
+        "[plan_memory] Nested planning inside a planned function is not supported.");
+  }
+  auto& allocator = metal::allocator();
+  auto copies = clone_memory_plan_graph(outputs);
+  allocator.begin_plan(memory_plan_initial_live_bytes(copies));
+  try {
+    eval_impl(copies, false);
+  } catch (...) {
+    allocator.end_plan();
+    throw;
+  }
+  auto [peak_bytes, retained_bytes] = allocator.end_plan();
+  return {peak_bytes, retained_bytes};
+}
+
+MemoryPlan plan_memory(const std::function<std::vector<array>()>& function) {
+  std::vector<array> outputs;
+  {
+    MemoryPlanCapture capture;
+    outputs = function();
+  }
+  return plan_memory(std::move(outputs));
 }
 
 std::pair<std::vector<array>, std::vector<array>> vjp(

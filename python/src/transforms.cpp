@@ -1224,6 +1224,24 @@ void init_transforms(nb::module_& m) {
             >>> print(z)
       )pbdoc");
   m.def(
+      "plan_memory",
+      [](const nb::callable& fun) {
+        auto function = [&fun]() { return tree_flatten(fun(), false); };
+        auto plan = mx::plan_memory(function);
+        return std::make_pair(plan.peak_bytes, plan.retained_bytes);
+      },
+      nb::arg("function"),
+      nb::sig("def plan_memory(function: Callable) -> tuple[int, int]"));
+  m.def(
+      "plan_memory",
+      [](const nb::args& args) {
+        std::vector<mx::array> arrays = tree_flatten(args, false);
+        auto plan = mx::plan_memory(std::move(arrays));
+        return std::make_pair(plan.peak_bytes, plan.retained_bytes);
+      },
+      nb::arg(),
+      nb::sig("def plan_memory(*args) -> tuple[int, int]"));
+  m.def(
       "jvp",
       [](const nb::callable& fun,
          const std::vector<mx::array>& primals,

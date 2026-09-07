@@ -41,6 +41,9 @@ class MetalAllocator : public allocator::Allocator {
   size_t get_memory_limit();
   size_t set_wired_limit(size_t limit);
   void clear_cache();
+  void begin_plan(size_t initial_live_bytes);
+  std::pair<size_t, size_t> end_plan();
+  bool planning() const;
 
  private:
   MTL::Device* device_;
@@ -76,5 +79,6 @@ class MetalAllocator : public allocator::Allocator {
 };
 
 MetalAllocator& allocator();
+bool is_memory_planning();
 
 } // namespace mlx::core::metal

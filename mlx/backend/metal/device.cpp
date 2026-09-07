@@ -335,6 +335,9 @@ void CommandEncoder::set_buffer(
     const MTL::Buffer* buf,
     int idx,
     int64_t offset /* = 0 */) {
+  if (is_memory_planning()) {
+    return;
+  }
   // Record as both input and output to ensure synchronization between command
   // buffers
   all_inputs_.insert((void*)buf);
@@ -346,6 +349,9 @@ void CommandEncoder::set_input_array(
     const array& a,
     int idx,
     int64_t offset /* = 0 */) {
+  if (is_memory_planning()) {
+    return;
+  }
   if (all_inputs_.insert(a.buffer().ptr()).second) {
     buffer_sizes_ += a.data_size();
   }
@@ -367,6 +373,9 @@ void CommandEncoder::set_output_array(
 }
 
 void CommandEncoder::register_output_array(const array& a) {
+  if (is_memory_planning()) {
+    return;
+  }
   all_outputs_.insert(a.buffer().ptr());
 
   auto buf = static_cast<MTL::Resource*>(const_cast<void*>(a.buffer().ptr()));
@@ -391,6 +400,9 @@ void CommandEncoder::add_temporaries(std::vector<array> arrays) {
 }
 
 void CommandEncoder::maybeInsertBarrier() {
+  if (is_memory_planning()) {
+    return;
+  }
   if (needs_barrier_) {
     get_command_encoder()->memoryBarrier(MTL::BarrierScopeBuffers);
     needs_barrier_ = false;
@@ -408,6 +420,9 @@ void CommandEncoder::maybeInsertBarrier() {
 void CommandEncoder::dispatch_threadgroups(
     MTL::Size grid_dims,
     MTL::Size group_dims) {
+  if (is_memory_planning()) {
+    return;
+  }
   maybeInsertBarrier();
   buffer_ops_++;
   get_command_encoder()->dispatchThreadgroups(grid_dims, group_dims);
@@ -416,16 +431,26 @@ void CommandEncoder::dispatch_threadgroups(
 void CommandEncoder::dispatch_threads(
     MTL::Size grid_dims,
     MTL::Size group_dims) {
+  if (is_memory_planning()) {
+    return;
+  }
   maybeInsertBarrier();
   buffer_ops_++;
   get_command_encoder()->dispatchThreads(grid_dims, group_dims);
 }
 
 void CommandEncoder::barrier() {
+  if (is_memory_planning()) {
+    return;
+  }
   get_command_encoder()->memoryBarrier(MTL::BarrierScopeBuffers);
 }
 
 void CommandEncoder::end_encoding() {
+  if (is_memory_planning()) {
+    temporaries_.clear();
+    return;
+  }
   // Each command encoder has a unique fence. We also store a map of
   // all previous outputs of command encoders to their corresponding fence.
   // - The command encoder records its inputs and outputs.
@@ -497,23 +522,39 @@ void CommandEncoder::end_encoding() {
 }
 
 void CommandEncoder::signal_event(Event event, uint64_t value) {
+  if (is_memory_planning()) {
+    return;
+  }
   end_encoding();
   buffer_->encodeSignalEvent(event.cast<EventImpl>().mtl_event(), value);
   signal_events_.push_back({std::move(event), value});
 }
 
 void CommandEncoder::wait_event(Event event, uint64_t value) {
+  if (is_memory_planning()) {
+    return;
+  }
   end_encoding();
   buffer_->encodeWait(event.cast<EventImpl>().mtl_event(), value);
   wait_events_.push_back(std::move(event));
 }
 
 bool CommandEncoder::needs_commit() const {
+  if (is_memory_planning()) {
+    return false;
+  }
   auto [max_ops, max_mb] = device_.get_max_ops_mb_per_buffer();
   return (buffer_ops_ > max_ops) || ((buffer_sizes_ >> 20) > max_mb);
 }
 
 void CommandEncoder::commit(std::function<void()> completion) {
+  if (is_memory_planning()) {
+    temporaries_.clear();
+    if (completion) {
+      completion();
+    }
+    return;
+  }
   // Metal locks a command buffer's residency at commit time, so attach any
   // sets created since the last commit first.
   residency_sets_.attach_new_sets(queue_.get(), sets_attached_);
@@ -562,6 +603,10 @@ void CommandEncoder::commit(std::function<void()> completion) {
 }
 
 void CommandEncoder::synchronize() {
+  if (is_memory_planning()) {
+    end_encoding();
+    return;
+  }
   auto pool = new_scoped_memory_pool();
   auto cbuf = buffer_; // retained
   end_encoding();

@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <cassert>
 #include <cstdlib>
+#include <unordered_map>
 
 namespace mlx::core {
 
@@ -41,6 +42,22 @@ bool can_reuse_alien_buffer(void* ptr) {
 } // namespace allocator
 
 namespace metal {
+
+namespace {
+
+struct MemoryPlanState {
+  bool active{false};
+  size_t active_memory{0};
+  size_t peak_memory{0};
+  std::unordered_map<void*, size_t> buffers;
+};
+
+MemoryPlanState& memory_plan_state() {
+  static thread_local MemoryPlanState state;
+  return state;
+}
+
+} // namespace
 
 MetalAllocator::MetalAllocator(Device& d)
     : device_(d.mtl_device()),
@@ -125,6 +142,19 @@ Buffer MetalAllocator::malloc(size_t size) {
     size = vm_page_size * ((size + vm_page_size - 1) / vm_page_size);
   }
 
+  auto& plan = memory_plan_state();
+  if (plan.active) {
+    auto* buf = device_->newBuffer(1, resource_options);
+    if (!buf) {
+      throw std::runtime_error(
+          "[metal::malloc] Unable to allocate planning buffer.");
+    }
+    plan.buffers.insert({buf, size});
+    plan.active_memory += size;
+    plan.peak_memory = std::max(plan.peak_memory, plan.active_memory);
+    return Buffer{static_cast<void*>(buf)};
+  }
+
   // Try the cache
   std::unique_lock lk(mutex_);
   MTL::Buffer* buf = buffer_cache_.reuse_from_cache(size);
@@ -185,6 +215,13 @@ void MetalAllocator::free(Buffer buffer) {
   if (buf == nullptr) {
     return;
   }
+  auto& plan = memory_plan_state();
+  if (auto it = plan.buffers.find(buf); it != plan.buffers.end()) {
+    plan.active_memory -= it->second;
+    plan.buffers.erase(it);
+    buf->release();
+    return;
+  }
   std::unique_lock lk(mutex_);
   active_memory_ -= buf->length();
   if (get_cache_memory() < max_pool_size_) {
@@ -201,7 +238,34 @@ void MetalAllocator::free(Buffer buffer) {
 }
 
 size_t MetalAllocator::size(Buffer buffer) const {
+  auto& plan = memory_plan_state();
+  if (auto it = plan.buffers.find(buffer.ptr()); it != plan.buffers.end()) {
+    return it->second;
+  }
   return static_cast<MTL::Buffer*>(buffer.ptr())->length();
+}
+
+void MetalAllocator::begin_plan(size_t initial_live_bytes) {
+  auto& plan = memory_plan_state();
+  if (plan.active || !plan.buffers.empty()) {
+    throw std::runtime_error("A memory plan is already active.");
+  }
+  plan.active = true;
+  plan.active_memory = initial_live_bytes;
+  plan.peak_memory = initial_live_bytes;
+}
+
+std::pair<size_t, size_t> MetalAllocator::end_plan() {
+  auto& plan = memory_plan_state();
+  if (!plan.active) {
+    throw std::runtime_error("No memory plan is active.");
+  }
+  plan.active = false;
+  return {plan.peak_memory, plan.active_memory};
+}
+
+bool MetalAllocator::planning() const {
+  return memory_plan_state().active;
 }
 
 Buffer MetalAllocator::make_buffer(void* ptr, size_t size) {
@@ -238,6 +302,10 @@ MetalAllocator& allocator() {
   static MetalAllocator* allocator_ =
       new MetalAllocator(device(mlx::core::Device::gpu));
   return *allocator_;
+}
+
+bool is_memory_planning() {
+  return allocator().planning();
 }
 
 } // namespace metal
