@@ -35,6 +35,7 @@ we use a splittable version of Threefry, which is a counter-based PRNG.
 
    bernoulli
    categorical
+   fold_in
    gumbel
    key
    normal

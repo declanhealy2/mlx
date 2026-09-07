@@ -150,6 +150,20 @@ class TestExportImport(mlx_tests.MLXTestCase):
 
         self.assertTrue(mx.array_equal(out, expected))
 
+    def test_export_random_fold_in(self):
+        path = os.path.join(self.test_dir, "fold_in.mlxfn")
+        key = mx.random.key(0)
+        data = mx.array(7, dtype=mx.int32)
+
+        def fun(key, data):
+            return mx.random.fold_in(key, data)
+
+        mx.export_function(path, fun, (key, data))
+        imported = mx.import_function(path)
+        (out,) = imported(key, data)
+
+        self.assertTrue(mx.array_equal(out, fun(key, data)))
+
     def test_export_with_kwargs(self):
         path = os.path.join(self.test_dir, "fn.mlxfn")
 

@@ -101,3 +101,19 @@ rbits threefry2x32_hash(const thread uint2& key, uint2 count) {
     }
   }
 }
+
+[[kernel]] void fold_in(
+    device const uint32_t* key,
+    device const uint32_t* data,
+    device uint32_t* out,
+    constant const bool& data_is_scalar,
+    constant const bool& key_contiguous,
+    constant const int64_t& key_stride,
+    uint index [[thread_position_in_grid]]) {
+  uint key_index = key_contiguous ? 2 * index : 0;
+  auto bits = threefry2x32_hash(
+      uint2(key[key_index], key[key_contiguous ? key_index + 1 : key_stride]),
+      uint2(0, data[data_is_scalar ? 0 : index]));
+  out[2 * index] = bits.val.x;
+  out[2 * index + 1] = bits.val.y;
+}

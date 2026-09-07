@@ -130,6 +130,22 @@ __global__ void rbits(
   }
 }
 
+__global__ void fold_in(
+    const uint32_t* key,
+    const uint32_t* data,
+    uint32_t* out,
+    bool data_is_scalar,
+    bool key_contiguous,
+    int64_t key_stride) {
+  uint32_t index = blockIdx.x * blockDim.x + threadIdx.x;
+  uint32_t key_index = key_contiguous ? 2 * index : 0;
+  auto bits = threefry2x32_hash(
+      uint2{key[key_index], key[key_contiguous ? key_index + 1 : key_stride]},
+      uint2{0, data[data_is_scalar ? 0 : index]});
+  out[2 * index] = bits.val.x;
+  out[2 * index + 1] = bits.val.y;
+}
+
 } // namespace cu
 
 void RandomBits::eval_gpu(const std::vector<array>& inputs, array& out) {
@@ -195,6 +211,35 @@ void RandomBits::eval_gpu(const std::vector<array>& inputs, array& out) {
         const_param(keys.shape()),
         const_param(keys.strides()));
   }
+}
+
+void RandomFoldIn::eval_gpu(
+    const std::vector<array>& inputs,
+    array& out) {
+  nvtx3::scoped_range r("RandomFoldIn::eval_gpu");
+  assert(inputs.size() == 2);
+  auto& key = inputs[0];
+  auto& data = inputs[1];
+  auto& encoder = cu::get_command_encoder(stream());
+  out.set_data(cu::malloc_async(out.nbytes(), encoder));
+  encoder.set_input_array(key);
+  encoder.set_input_array(data);
+  encoder.set_output_array(out);
+  auto nkeys = out.size() / 2;
+  if (nkeys == 0) {
+    return;
+  }
+  auto [grid, block] = get_grid_and_block(nkeys, 1, 1);
+  encoder.add_kernel_node(
+      cu::fold_in,
+      grid,
+      block,
+      gpu_ptr<uint32_t>(key),
+      gpu_ptr<uint32_t>(data),
+      gpu_ptr<uint32_t>(out),
+      data.size() == 1,
+      key.flags().row_contiguous,
+      key.strides()[0]);
 }
 
 } // namespace mlx::core

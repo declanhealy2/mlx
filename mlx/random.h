@@ -60,6 +60,12 @@ MLX_API std::pair<array, array> split(const array& key, StreamOrDevice s = {});
 /** Split the rng key into `num` keys. */
 MLX_API array split(const array& key, int num, StreamOrDevice s = {});
 
+/** Fold scalar integer data into a PRNG key. */
+MLX_API array fold_in(
+    const array& key,
+    const array& data,
+    StreamOrDevice s = {});
+
 /** Generate uniform random numbers between low and high. */
 MLX_API array uniform(
     const array& low,

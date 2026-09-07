@@ -53,6 +53,25 @@ TEST_CASE("test random split") {
   CHECK(array_equal(keys, expected).item<bool>());
 }
 
+TEST_CASE("test random fold in") {
+  auto key = random::key(0);
+  auto folded = random::fold_in(key, array(0u));
+  CHECK(array_equal(
+            folded, array({1797259609u, 2579123966u})).item<bool>());
+
+  folded = random::fold_in(key, array(7, int32));
+  CHECK(array_equal(folded, array({2716826189u, 292468403u})).item<bool>());
+
+  folded = random::fold_in(key, array(-1, int64));
+  CHECK(array_equal(
+            folded, array({743310391u, 3789761811u})).item<bool>());
+
+  CHECK_THROWS(random::fold_in(array({0, 0}, int32), array(0u)));
+  CHECK_THROWS(random::fold_in(array({0u, 0u, 0u}), array(0u)));
+  CHECK_THROWS(random::fold_in(key, array({0u}, uint32)));
+  CHECK_THROWS(random::fold_in(key, array(0.0f)));
+}
+
 TEST_CASE("test random bits") {
   // Test shapes, types, and sizes
   {

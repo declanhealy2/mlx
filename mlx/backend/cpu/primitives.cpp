@@ -298,6 +298,41 @@ void RandomBits::eval_cpu(const std::vector<array>& inputs, array& out) {
   });
 }
 
+void RandomFoldIn::eval_cpu(
+    const std::vector<array>& inputs,
+    array& out) {
+  assert(inputs.size() == 2);
+  auto& key = inputs[0];
+  auto& data = inputs[1];
+  out.set_data(allocator::malloc(out.nbytes()));
+
+  auto key_ptr = key.data<uint32_t>();
+  auto data_ptr = data.data<uint32_t>();
+  auto out_ptr = out.data<uint32_t>();
+  auto& encoder = cpu::get_command_encoder(stream());
+  encoder.set_input_array(key);
+  encoder.set_input_array(data);
+  encoder.set_output_array(out);
+  encoder.dispatch([key_ptr,
+                    data_ptr,
+                    out_ptr,
+                    num_keys = out.size() / 2,
+                    data_size = data.size(),
+                    key_shape = key.shape(),
+                    key_strides = key.strides()]() {
+    for (size_t i = 0; i < num_keys; ++i) {
+      auto key_index = 2 * i;
+      auto key_first = elem_to_loc(key_index, key_shape, key_strides);
+      auto key_second = elem_to_loc(key_index + 1, key_shape, key_strides);
+      auto data_index = data_size == 1 ? 0 : i;
+      auto folded = random::threefry2x32_hash(
+          {key_ptr[key_first], key_ptr[key_second]}, {0, data_ptr[data_index]});
+      out_ptr[key_index] = folded.first;
+      out_ptr[key_index + 1] = folded.second;
+    }
+  });
+}
+
 void Reshape::eval_cpu(const std::vector<array>& inputs, array& out) {
   reshape(inputs[0], out);
 }

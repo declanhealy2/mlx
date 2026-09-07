@@ -3923,6 +3923,48 @@ bool RandomBits::is_equivalent(const Primitive& other) const {
   return shape_ == r_other.shape_ && width_ == r_other.width_;
 }
 
+std::pair<std::vector<array>, std::vector<int>> RandomFoldIn::vmap(
+    const std::vector<array>& inputs,
+    const std::vector<int>& axes) {
+  assert(inputs.size() == 2);
+  assert(axes.size() == 2);
+
+  int vmap_size = -1;
+  for (int i = 0; i < axes.size(); ++i) {
+    if (axes[i] >= 0) {
+      vmap_size = inputs[i].shape(axes[i]);
+      break;
+    }
+  }
+  assert(vmap_size >= 0);
+
+  auto move_batch_axis = [&](array input, int axis) {
+    if (axis >= 0) {
+      return moveaxis(input, axis, 0, stream());
+    }
+    auto shape = input.shape();
+    shape.insert(shape.begin(), 1);
+    auto expanded = reshape(input, shape, stream());
+    shape[0] = vmap_size;
+    return broadcast_to(expanded, shape, stream());
+  };
+
+  auto key = move_batch_axis(inputs[0], axes[0]);
+  auto data = move_batch_axis(inputs[1], axes[1]);
+  key = contiguous(key, false, stream());
+  data = contiguous(data, false, stream());
+  if (data.dtype() != uint32) {
+    data = astype(data, uint32, stream());
+  }
+
+  auto out = array(
+      key.shape(),
+      uint32,
+      std::make_shared<RandomFoldIn>(stream()),
+      {key, data});
+  return {{out}, {0}};
+}
+
 std::vector<array> Real::vjp(
     const std::vector<array>& primals,
     const std::vector<array>& cotangents,

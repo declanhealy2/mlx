@@ -165,6 +165,24 @@ void init_random(nb::module_& parent_module) {
             array: The array of sub keys with ``num`` as its first dimension.
       )pbdoc");
   m.def(
+      "fold_in",
+      &mx::random::fold_in,
+      "key"_a,
+      "data"_a,
+      "stream"_a = nb::none(),
+      nb::sig(
+          "def fold_in(key: array, data: array, stream: StreamOrDevice = None) -> array"),
+      R"pbdoc(
+        Fold scalar integer data into a PRNG key.
+
+        Args:
+            key (array): Input PRNG key with shape ``(2,)`` and dtype ``uint32``.
+            data (array): Scalar integer data to fold into the key.
+
+        Returns:
+            array: A new PRNG key with shape ``(2,)`` and dtype ``uint32``.
+      )pbdoc");
+  m.def(
       "uniform",
       [](const ScalarOrArray& low,
          const ScalarOrArray& high,

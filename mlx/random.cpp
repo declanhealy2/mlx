@@ -87,6 +87,27 @@ array split(const array& key, int num, StreamOrDevice s /* = {} */) {
   return bits({num, 2}, 4, key, s);
 }
 
+array fold_in(
+    const array& key,
+    const array& data,
+    StreamOrDevice s /* = {} */) {
+  auto stream = to_stream(s);
+  if (key.dtype() != uint32 || key.shape() != Shape{2}) {
+    throw std::invalid_argument(
+        "[fold_in] key must have dtype uint32 and shape (2).");
+  }
+  if (data.ndim() != 0 || !issubdtype(data.dtype(), integer)) {
+    throw std::invalid_argument(
+        "[fold_in] data must be a scalar integer array.");
+  }
+  auto data_u32 = astype(data, uint32, stream);
+  return array(
+      {2},
+      uint32,
+      std::make_shared<RandomFoldIn>(stream),
+      {key, data_u32});
+}
+
 // Get the next representable value below 1.0 for half precision
 // floating point types (fp16, bf16)
 template <typename T>

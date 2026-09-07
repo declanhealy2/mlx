@@ -176,6 +176,34 @@ void RandomBits::eval_gpu(const std::vector<array>& inputs, array& out) {
   compute_encoder.dispatch_threads(grid_dims, group_dims);
 }
 
+void RandomFoldIn::eval_gpu(
+    const std::vector<array>& inputs,
+    array& out) {
+  assert(inputs.size() == 2);
+  auto& key = inputs[0];
+  auto& data = inputs[1];
+  out.set_data(allocator::malloc(out.nbytes()));
+
+  auto& s = stream();
+  auto& d = metal::device(s.device);
+  auto& compute_encoder = metal::get_command_encoder(s);
+  compute_encoder.set_compute_pipeline_state(d.get_kernel("fold_in"));
+  compute_encoder.set_input_array(key, 0);
+  compute_encoder.set_input_array(data, 1);
+  compute_encoder.set_output_array(out, 2);
+  auto data_is_scalar = data.size() == 1;
+  auto key_contiguous = key.flags().row_contiguous;
+  compute_encoder.set_bytes(data_is_scalar, 3);
+  compute_encoder.set_bytes(key_contiguous, 4);
+  compute_encoder.set_bytes(key.strides()[0], 5);
+  auto nkeys = out.size() / 2;
+  if (nkeys == 0) {
+    return;
+  }
+  auto group_size = get_block_dims(nkeys, 1, 1);
+  compute_encoder.dispatch_threads(MTL::Size(nkeys, 1, 1), group_size);
+}
+
 void QRF::eval_gpu(
     const std::vector<array>& inputs,
     std::vector<array>& outputs) {

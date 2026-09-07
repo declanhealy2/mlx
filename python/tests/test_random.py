@@ -41,6 +41,82 @@ class TestRandom(mlx_tests.MLXTestCase):
         keys = mx.random.split(key, 10)
         self.assertEqual(keys.shape, (10, 2))
 
+    def test_key_fold_in(self):
+        key = mx.random.key(0)
+        folded = mx.random.fold_in(key, mx.array(0, dtype=mx.uint32))
+        self.assertEqual(folded.dtype, mx.uint32)
+        self.assertEqual(folded.shape, (2,))
+        self.assertTrue(
+            mx.array_equal(folded, mx.array([1797259609, 2579123966], mx.uint32))
+        )
+
+        for data, expected in [
+            (1, [928981903, 3453687069]),
+            (7, [2716826189, 292468403]),
+            (-1, [743310391, 3789761811]),
+        ]:
+            result = mx.random.fold_in(key, mx.array(data, dtype=mx.int64))
+            self.assertTrue(mx.array_equal(result, mx.array(expected, mx.uint32)))
+
+        if mx.default_device() == mx.gpu:
+            key = mx.array([0, 0], dtype=mx.uint32)
+            data = mx.array(7, dtype=mx.int32)
+            result = mx.random.fold_in(key, data, stream=mx.gpu)
+            mx.eval(result)
+            self.assertTrue(
+                mx.array_equal(
+                    result, mx.array([2716826189, 292468403], mx.uint32)
+                )
+            )
+
+        with self.assertRaises(ValueError):
+            mx.random.fold_in(mx.array([0, 0], dtype=mx.int32), mx.array(0))
+        with self.assertRaises(ValueError):
+            mx.random.fold_in(key, mx.array([0], dtype=mx.uint32))
+        with self.assertRaises(ValueError):
+            mx.random.fold_in(key, mx.array(0.0))
+
+    def test_key_fold_in_vmap(self):
+        keys = mx.array([[0, 0], [1, 2]], dtype=mx.uint32)
+        data = mx.array([0, 7], dtype=mx.int32)
+        expected = mx.array(
+            [[1797259609, 2579123966], [3427225942, 3095793599]],
+            dtype=mx.uint32,
+        )
+
+        result = mx.vmap(mx.random.fold_in)(keys, data)
+        self.assertTrue(mx.array_equal(result, expected))
+
+        result = mx.vmap(mx.random.fold_in, in_axes=(0, None))(
+            keys, mx.array(7, dtype=mx.int32)
+        )
+        expected = mx.array(
+            [[2716826189, 292468403], [3427225942, 3095793599]],
+            dtype=mx.uint32,
+        )
+        self.assertTrue(mx.array_equal(result, expected))
+
+        result = mx.vmap(mx.random.fold_in, in_axes=(None, 0))(
+            mx.array([0, 0], dtype=mx.uint32), data
+        )
+        expected = mx.array(
+            [[1797259609, 2579123966], [2716826189, 292468403]],
+            dtype=mx.uint32,
+        )
+        self.assertTrue(mx.array_equal(result, expected))
+
+    def test_key_fold_in_compile(self):
+        keys = mx.array([[0, 0], [1, 2]], dtype=mx.uint32)
+        data = mx.array([0, 7], dtype=mx.int32)
+        expected = mx.array(
+            [[1797259609, 2579123966], [3427225942, 3095793599]],
+            dtype=mx.uint32,
+        )
+
+        compiled = mx.compile(mx.vmap(mx.random.fold_in))
+        result = compiled(keys, data)
+        self.assertTrue(mx.array_equal(result, expected))
+
     def test_uniform(self):
         key = mx.random.key(0)
         a = mx.random.uniform(key=key)
