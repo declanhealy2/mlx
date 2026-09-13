@@ -231,12 +231,18 @@ class MLX_API array {
   struct Data {
     allocator::Buffer buffer;
     Deleter d;
+    bool donatable{true};
+    bool writable{true};
     Data(allocator::Buffer buffer, Deleter d = allocator::free)
         : buffer(buffer), d(d) {}
     // Not copyable
     Data(const Data& d) = delete;
     Data& operator=(const Data& d) = delete;
-    Data(Data&& o) : buffer(o.buffer), d(o.d) {
+    Data(Data&& o)
+        : buffer(o.buffer),
+          d(o.d),
+          donatable(o.donatable),
+          writable(o.writable) {
       o.buffer = allocator::Buffer(nullptr);
       o.d = [](allocator::Buffer) {};
     }
@@ -292,7 +298,9 @@ class MLX_API array {
 
   /** True indicates the arrays buffer is safe to reuse */
   bool is_donatable() const {
-    return array_desc_.use_count() == 1 && (array_desc_->data.use_count() == 1);
+    return array_desc_.use_count() == 1 && array_desc_->data.use_count() == 1 &&
+        array_desc_->data->writable &&
+        (array_desc_->data->donatable || array_desc_->donation_requested);
   }
 
   /** The array's siblings. */
@@ -466,6 +474,13 @@ class MLX_API array {
   void copy_shared_buffer(const array& other);
 
   void overwrite_descriptor(const array& other) {
+    if (array_desc_.use_count() == 2 &&
+        std::any_of(
+            other.inputs().begin(),
+            other.inputs().end(),
+            [this](const array& input) { return input.id() == id(); })) {
+      array_desc_->donation_requested = true;
+    }
     array_desc_ = other.array_desc_;
   }
 
@@ -491,6 +506,7 @@ class MLX_API array {
     // Indicates an array is being used in a graph transform
     // and should not be detached from the graph
     bool is_tracer{false};
+    bool donation_requested{false};
 
     // This is a shared pointer so that *different* arrays
     // can share the underlying data buffer.

@@ -1325,6 +1325,20 @@ class TestOps(mlx_tests.MLXTestCase):
 
         self.assertTrue(np.allclose(result, expected))
 
+    def test_float64_trigonometry_on_cpu(self):
+        values = [-(2.0**40), -(2.0**-30), 0.0, 2.0**-30, 0.125, 2.0**20 + 0.125, 1e100]
+        with mx.stream(mx.cpu):
+            for operation, oracle in ((mx.sin, math.sin), (mx.cos, math.cos)):
+                for size in (1, 3, 4, 7, 16):
+                    with self.subTest(operation=operation.__name__, size=size):
+                        inputs = [values[i % len(values)] for i in range(size)]
+                        expected = np.array([oracle(value) for value in inputs])
+                        actual = operation(mx.array(inputs, dtype=mx.float64))
+                        self.assertEqual(actual.dtype, mx.float64)
+                        np.testing.assert_array_max_ulp(
+                            np.array(actual), expected, maxulp=1
+                        )
+
     def test_degrees(self):
         a = mx.array(
             [0, math.pi / 4, math.pi / 2, math.pi, 3 * math.pi / 4, 2 * math.pi]

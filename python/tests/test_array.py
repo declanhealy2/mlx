@@ -81,6 +81,71 @@ class TestArrayNamespsceInfo(mlx_tests.MLXTestCase):
 
 
 class TestDtypes(mlx_tests.MLXTestCase):
+    @unittest.skipUnless(mx.metal.is_available(), "Requires zero-copy host buffers")
+    def test_borrowed_buffers_are_not_donated(self):
+        for device, dtype in ((mx.cpu, np.float32), (mx.gpu, np.float32)):
+            for writable in (False, True):
+                for operation in (
+                    operator.neg,
+                    lambda value: value * 3,
+                    lambda value: value[::2] + 1,
+                ):
+                    with self.subTest(
+                        device=device,
+                        dtype=dtype,
+                        writable=writable,
+                        operation=operation,
+                    ):
+                        source = np.arange(16, dtype=dtype)
+                        original = source.copy()
+                        expected = operation(original)
+                        source.flags.writeable = writable
+                        with mx.stream(device):
+                            result = operation(
+                                mx.asarray(
+                                    source,
+                                    dtype=getattr(mx, np.dtype(dtype).name),
+                                    copy=False,
+                                )
+                            )
+                            mx.eval(result)
+                            np.testing.assert_array_equal(np.array(result), expected)
+                        np.testing.assert_array_equal(source, original)
+
+    @unittest.skipUnless(mx.metal.is_available(), "Requires zero-copy host buffers")
+    def test_borrowed_inplace_updates_preserve_storage_permissions(self):
+        for device in (mx.cpu, mx.gpu):
+            for writable in (False, True):
+                with self.subTest(device=device, writable=writable):
+                    source = np.arange(16, dtype=np.float32)
+                    original = source.copy()
+                    source.flags.writeable = writable
+                    expected_source = original + 2 if writable else original
+                    with mx.stream(device):
+                        value = mx.asarray(source, copy=False)
+                        value += 2
+                        mx.eval(value)
+                        np.testing.assert_array_equal(np.array(value), original + 2)
+                        np.testing.assert_array_equal(source, expected_source)
+                        result = -value
+                        del value
+                        mx.eval(result)
+                        np.testing.assert_array_equal(np.array(result), -(original + 2))
+                    np.testing.assert_array_equal(source, expected_source)
+
+    @unittest.skipUnless(mx.metal.is_available(), "Requires zero-copy host buffers")
+    def test_borrowed_inplace_update_does_not_change_pending_expressions(self):
+        source = np.arange(8, dtype=np.float32)
+        original = source.copy()
+        value = mx.asarray(source, copy=False)
+        pending = -value
+        value += 2
+        mx.eval(value)
+        np.testing.assert_array_equal(np.array(value), original + 2)
+        mx.eval(pending)
+        np.testing.assert_array_equal(np.array(pending), -original)
+        np.testing.assert_array_equal(source, original)
+
     def test_dtypes(self):
         self.assertEqual(mx.bool_.size, 1)
         self.assertEqual(mx.uint8.size, 1)
@@ -2437,6 +2502,20 @@ class TestArray(mlx_tests.MLXTestCase):
         x.zero_()
         torch.mps.synchronize()
         self.assertEqual(y.tolist(), [0.0, 1.0, 2.0])
+
+    @unittest.skipUnless(has_torch_mps, "PyTorch MPS is required")
+    def test_torch_mps_borrowed_buffers_are_not_donated(self):
+        assert torch is not None
+        for create in (mx.asarray, mx.from_dlpack):
+            for operation in (operator.neg, lambda value: value[::2] + 1):
+                with self.subTest(create=create, operation=operation):
+                    source = torch.arange(16, device="mps", dtype=torch.float32)
+                    original = np.arange(16, dtype=np.float32)
+                    torch.mps.synchronize()
+                    result = operation(create(source, copy=False))
+                    mx.eval(result)
+                    np.testing.assert_array_equal(np.array(result), operation(original))
+                    np.testing.assert_array_equal(source.cpu().numpy(), original)
 
     @unittest.skipUnless(has_torch_mps, "PyTorch MPS is required")
     def test_torch_mps_dlpack_zero_copy_shares_updates(self):

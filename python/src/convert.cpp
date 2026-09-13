@@ -190,7 +190,8 @@ mx::array cpu_nd_array_to_mlx(
 std::optional<mx::array> cpu_nd_array_to_mlx_no_copy(
     nb::ndarray<nb::ro> nd_array,
     const mx::Shape& shape,
-    mx::Dtype dst_dtype) {
+    mx::Dtype dst_dtype,
+    bool writable) {
   if (!mx::metal::is_available() ||
       nd_array.itemsize() != mx::size_of(dst_dtype)) {
     return std::nullopt;
@@ -219,6 +220,8 @@ std::optional<mx::array> cpu_nd_array_to_mlx_no_copy(
       [owner = std::move(nd_array)](mx::allocator::Buffer b) {
         mx::allocator::release(b);
       });
+  out.data_shared_ptr()->donatable = false;
+  out.data_shared_ptr()->writable = writable;
   out.set_status(mx::array::Status::available);
   return out;
 }
@@ -227,7 +230,8 @@ mx::array metal_nd_array_to_mlx(
     nb::ndarray<nb::ro> nd_array,
     mx::Dtype src_dtype,
     mx::Dtype dst_dtype,
-    bool copy) {
+    bool copy,
+    bool writable) {
   if (!mx::metal::is_available()) {
     throw std::invalid_argument("Metal DLPack import is not available.");
   }
@@ -246,6 +250,8 @@ mx::array metal_nd_array_to_mlx(
       flags,
       nd_array.byte_offset(),
       [owner = std::move(nd_array)](mx::allocator::Buffer) {});
+  out.data_shared_ptr()->donatable = false;
+  out.data_shared_ptr()->writable = writable;
   out.set_status(mx::array::Status::available);
 
   if (copy) {
@@ -257,10 +263,13 @@ mx::array metal_nd_array_to_mlx(
 }
 
 mx::array nd_array_to_mlx(
-    nb::ndarray<nb::ro> nd_array,
+    NDArrayInput input,
     std::optional<mx::Dtype> requested_dtype,
     std::optional<nb::dlpack::dtype> src_dlpack_dtype_override,
     std::optional<bool> copy) {
+  bool writable = std::holds_alternative<nb::ndarray<>>(input);
+  auto nd_array = std::visit(
+      [](const auto& value) { return nb::ndarray<nb::ro>(value); }, input);
   auto src_dlpack_dtype = src_dlpack_dtype_override.value_or(nd_array.dtype());
   auto src_mlx_dtype = mlx_dtype_from_dlpack(
       src_dlpack_dtype, "[convert] Cannot convert array to mlx.");
@@ -283,8 +292,8 @@ mx::array nd_array_to_mlx(
       // zero-copy adoption of the host buffer first. A copy is passed by value
       // so the source is preserved for the fallback below.
       if (!copy.value_or(false)) {
-        if (auto out =
-                cpu_nd_array_to_mlx_no_copy(nd_array, shape, dst_dtype)) {
+        if (auto out = cpu_nd_array_to_mlx_no_copy(
+                nd_array, shape, dst_dtype, writable)) {
           return *out;
         }
         if (no_copy) {
@@ -312,7 +321,7 @@ mx::array nd_array_to_mlx(
       bool should_copy = copy.value_or(false) || dst_dtype != src_mlx_dtype ||
           !can_reuse_buffer;
       return metal_nd_array_to_mlx(
-          nd_array, src_mlx_dtype, dst_dtype, should_copy);
+          nd_array, src_mlx_dtype, dst_dtype, should_copy, writable);
     }
     case nb::device::cuda::value:
     case nb::device::cuda_managed::value:
@@ -708,7 +717,7 @@ mx::array create_array(
     std::optional<mx::Dtype> t,
     std::optional<bool> copy) {
   if (!nb::isinstance<mx::array>(v) && nb::ndarray_check(v)) {
-    using ContigArray = nb::ndarray<nb::ro>;
+    using ContigArray = NDArrayInput;
     ContigArray nd;
     std::optional<nb::dlpack::dtype> nb_dtype;
     // Nanobind does not recognize bfloat16 numpy array:

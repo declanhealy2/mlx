@@ -67,6 +67,8 @@ array array::unsafe_weak_copy(const array& other) {
       0,
       [](auto) {});
   cpy.array_desc_->offset = other.array_desc_->offset;
+  cpy.array_desc_->data->donatable = other.array_desc_->data->donatable;
+  cpy.array_desc_->data->writable = other.array_desc_->data->writable;
   return cpy;
 }
 
