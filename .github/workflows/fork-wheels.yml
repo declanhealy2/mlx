@@ -39,15 +39,21 @@ jobs:
       - name: Build dependencies
         shell: bash
         run: |
-          brew install openmpi
+          brew install openmpi ccache
           xcrun -sdk macosx metal --version
           python -m pip install --upgrade pip build setuptools
           mkdir -p wheelhouse
+
+      - uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          key: fork-wheels-mlx
+          max-size: 1G
 
       - name: Build frontend (mlx) package
         shell: bash
         env:
           MACOSX_DEPLOYMENT_TARGET: ${{ inputs.macos-target }}
+          CMAKE_ARGS: -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
         run: |
           python setup.py clean --all
           MLX_BUILD_FRONTEND_PACKAGE=1 python -m build -w
@@ -57,6 +63,7 @@ jobs:
         shell: bash
         env:
           MACOSX_DEPLOYMENT_TARGET: ${{ inputs.macos-target }}
+          CMAKE_ARGS: -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
         run: |
           python setup.py clean --all
           MLX_BUILD_BACKEND_PACKAGE=1 python -m build -w
