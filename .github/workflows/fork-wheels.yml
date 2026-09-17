@@ -1,0 +1,75 @@
+name: Fork wheels (manual)
+
+# One-shot wheel builder for fork revs. GitHub-hosted macOS runners ship
+# full Xcode (Metal compiler included), so this is how we get installable
+# wheels without Xcode on the dev machine.
+#
+# Trigger: gh workflow run "Fork wheels (manual)" --repo declanhealy2/mlx \
+#            --ref fork-wheels -f rev=<sha> -f python-version=3.13
+
+on:
+  workflow_dispatch:
+    inputs:
+      rev:
+        description: 'Fork rev to build (full SHA)'
+        required: true
+        default: 'c61f580c8f874eb201cca7cf4c02eb65c669157d'
+      python-version:
+        description: 'Python version'
+        required: true
+        default: '3.13'
+      macos-target:
+        description: 'MACOSX_DEPLOYMENT_TARGET'
+        required: true
+        default: '15.0'
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.rev }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Build dependencies
+        shell: bash
+        run: |
+          brew install openmpi
+          xcodebuild -showComponent MetalToolchain
+          python -m pip install --upgrade pip build setuptools
+          mkdir -p wheelhouse
+
+      - name: Build frontend (mlx) package
+        shell: bash
+        env:
+          MACOSX_DEPLOYMENT_TARGET: ${{ inputs.macos-target }}
+        run: |
+          python setup.py clean --all
+          MLX_BUILD_FRONTEND_PACKAGE=1 python -m build -w
+          mv dist/mlx-*.whl wheelhouse/
+
+      - name: Build backend (mlx-metal) package
+        shell: bash
+        env:
+          MACOSX_DEPLOYMENT_TARGET: ${{ inputs.macos-target }}
+        run: |
+          python setup.py clean --all
+          MLX_BUILD_BACKEND_PACKAGE=1 python -m build -w
+          mv dist/mlx_metal-*.whl wheelhouse/
+
+      - name: List wheels
+        shell: bash
+        run: |
+          for WHEEL in wheelhouse/*.whl; do unzip -l "$WHEEL" | head -8; echo; done
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlx-fork-macos-py${{ inputs.python-version }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error
