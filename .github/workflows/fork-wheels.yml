@@ -4,8 +4,12 @@ name: Fork wheels (manual)
 # full Xcode (Metal compiler included), so this is how we get installable
 # wheels without Xcode on the dev machine.
 #
+# Builds the SINGLE-package layout (default `python -m build`, no
+# MLX_BUILD_* env): backend bundled, no mlx-metal companion package, exactly
+# matching what a local `uv sync` source build produces. One wheel per rev.
+#
 # Trigger: gh workflow run "Fork wheels (manual)" --repo declanhealy2/mlx \
-#            --ref fork-wheels -f rev=<sha> -f python-version=3.13
+#            --ref main -f rev=<sha> -f python-version=3.13
 
 on:
   workflow_dispatch:
@@ -49,25 +53,15 @@ jobs:
           key: fork-wheels-mlx
           max-size: 1G
 
-      - name: Build frontend (mlx) package
+      - name: Build mlx package (single, backend bundled)
         shell: bash
         env:
           MACOSX_DEPLOYMENT_TARGET: ${{ inputs.macos-target }}
           CMAKE_ARGS: -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
         run: |
           python setup.py clean --all
-          MLX_BUILD_FRONTEND_PACKAGE=1 python -m build -w
+          python -m build -w
           mv dist/mlx-*.whl wheelhouse/
-
-      - name: Build backend (mlx-metal) package
-        shell: bash
-        env:
-          MACOSX_DEPLOYMENT_TARGET: ${{ inputs.macos-target }}
-          CMAKE_ARGS: -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-        run: |
-          python setup.py clean --all
-          MLX_BUILD_BACKEND_PACKAGE=1 python -m build -w
-          mv dist/mlx_metal-*.whl wheelhouse/
 
       - name: List wheels
         shell: bash
