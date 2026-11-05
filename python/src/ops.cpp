@@ -1943,7 +1943,7 @@ void init_ops(nb::module_& m) {
       )pbdoc");
   m.def(
       "from_dlpack",
-      [](nb::ndarray<nb::ro> x, std::optional<bool> copy) {
+      [](NDArrayInput x, std::optional<bool> copy) {
         return nd_array_to_mlx(x, std::nullopt, std::nullopt, copy);
       },
       nb::arg(),
@@ -2481,24 +2481,29 @@ void init_ops(nb::module_& m) {
       )pbdoc");
   m.def(
       "moveaxis",
-      &mx::moveaxis,
+      [](const mx::array& a,
+         const AxisOrAxes& source,
+         const AxisOrAxes& destination,
+         mx::StreamOrDevice s) {
+        return mx::moveaxis(a, get_axes(source), get_axes(destination), s);
+      },
       nb::arg(),
       "source"_a,
       "destination"_a,
       nb::kw_only(),
       "stream"_a = nb::none(),
       nb::sig(
-          "def moveaxis(a: array, /, source: int, destination: int, *, stream: StreamOrDevice = None) -> array"),
+          "def moveaxis(a: array, /, source: int | Sequence[int], destination: int | Sequence[int], *, stream: StreamOrDevice = None) -> array"),
       R"pbdoc(
-        Move an axis to a new position.
+        Move one or more axes to new positions.
 
         Args:
             a (array): Input array.
-            source (int): Specifies the source axis.
-            destination (int): Specifies the destination axis.
+            source (int or sequence of int): Specifies the source axes.
+            destination (int or sequence of int): Specifies the destination axes.
 
         Returns:
-            array: The array with the axis moved.
+            array: The array with the axis or axes moved.
       )pbdoc");
   m.def(
       "swapaxes",
@@ -2574,16 +2579,19 @@ void init_ops(nb::module_& m) {
       [](const mx::array& a,
          const IntOrVec& axis,
          bool keepdims,
+         std::optional<mx::Dtype> dtype,
          mx::StreamOrDevice s) {
-        return mx::sum(a, get_reduce_axes(axis, a.ndim()), keepdims, s);
+        auto values = dtype ? mx::astype(a, *dtype, s) : a;
+        return mx::sum(values, get_reduce_axes(axis, a.ndim()), keepdims, s);
       },
       "array"_a,
       "axis"_a = nb::none(),
       "keepdims"_a = false,
       nb::kw_only(),
+      "dtype"_a = nb::none(),
       "stream"_a = nb::none(),
       nb::sig(
-          "def sum(a: array, /, axis: None | int | Sequence[int] = None, keepdims: bool = False, *, stream: StreamOrDevice = None) -> array"),
+          "def sum(a: array, /, axis: None | int | Sequence[int] = None, keepdims: bool = False, *, dtype: Dtype | None = None, stream: StreamOrDevice = None) -> array"),
       R"pbdoc(
         Sum reduce the array over the given axes.
 
@@ -2594,6 +2602,7 @@ void init_ops(nb::module_& m) {
               to reducing over the entire array.
             keepdims (bool, optional): Keep reduced axes as
               singleton dimensions, defaults to `False`.
+            dtype (Dtype, optional): Cast the input to this type before summing.
 
         Returns:
             array: The output array with the corresponding axes reduced.
@@ -3262,7 +3271,9 @@ void init_ops(nb::module_& m) {
   m.def(
       "broadcast_arrays",
       [](const nb::args& args, mx::StreamOrDevice s) {
-        return broadcast_arrays(nb::cast<std::vector<mx::array>>(args), s);
+        return nb::tuple(
+            nb::cast(
+                broadcast_arrays(nb::cast<std::vector<mx::array>>(args), s)));
       },
       nb::arg(),
       nb::kw_only(),

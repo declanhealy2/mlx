@@ -3,6 +3,7 @@
 
 #include <optional>
 #include <tuple>
+#include <variant>
 
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
@@ -43,8 +44,10 @@ struct ArrayLike {
   nb::object obj;
 };
 
+using NDArrayInput = std::variant<nb::ndarray<>, nb::ndarray<nb::ro>>;
+
 mx::array nd_array_to_mlx(
-    nb::ndarray<nb::ro> nd_array,
+    NDArrayInput input,
     std::optional<mx::Dtype> mx_dtype,
     std::optional<nb::dlpack::dtype> src_dlpack_dtype_override = std::nullopt,
     std::optional<bool> copy = std::nullopt);

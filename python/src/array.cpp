@@ -1228,7 +1228,12 @@ void init_array(nb::module_& m) {
           "See :func:`any`.")
       .def(
           "moveaxis",
-          &mx::moveaxis,
+          [](const mx::array& a,
+             const AxisOrAxes& source,
+             const AxisOrAxes& destination,
+             mx::StreamOrDevice s) {
+            return mx::moveaxis(a, get_axes(source), get_axes(destination), s);
+          },
           "source"_a,
           "destination"_a,
           nb::kw_only(),
@@ -1273,12 +1278,16 @@ void init_array(nb::module_& m) {
           [](const mx::array& a,
              const IntOrVec& axis,
              bool keepdims,
+             std::optional<mx::Dtype> dtype,
              mx::StreamOrDevice s) {
-            return mx::sum(a, get_reduce_axes(axis, a.ndim()), keepdims, s);
+            auto values = dtype ? mx::astype(a, *dtype, s) : a;
+            return mx::sum(
+                values, get_reduce_axes(axis, a.ndim()), keepdims, s);
           },
           "axis"_a = nb::none(),
           "keepdims"_a = false,
           nb::kw_only(),
+          "dtype"_a = nb::none(),
           "stream"_a = nb::none(),
           "See :func:`sum`.")
       .def(

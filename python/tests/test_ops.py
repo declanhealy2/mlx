@@ -731,9 +731,24 @@ class TestOps(mlx_tests.MLXTestCase):
         self.assertListEqual(mx.transpose(x, axes=(0, 2, 1)).tolist(), expected)
 
     def test_move_swap_axes(self):
-        x = mx.zeros((2, 3, 4))
+        x = mx.arange(24).reshape((2, 3, 4))
         self.assertEqual(mx.moveaxis(x, 0, 2).shape, (3, 4, 2))
         self.assertEqual(x.moveaxis(0, 2).shape, (3, 4, 2))
+        expected = mx.transpose(x, (2, 1, 0))
+        for moved in (
+            mx.moveaxis(x, (0, 2), (2, 0)),
+            x.moveaxis((0, 2), (2, 0)),
+        ):
+            self.assertTrue(mx.array_equal(moved, expected))
+        self.assertTrue(mx.array_equal(mx.moveaxis(x, 0, (2,)), mx.moveaxis(x, 0, 2)))
+        self.assertTrue(mx.array_equal(x.moveaxis((0,), 2), x.moveaxis(0, 2)))
+        self.assertTrue(mx.array_equal(mx.moveaxis(x, (), ()), x))
+        with self.assertRaises(ValueError):
+            mx.moveaxis(x, (0,), (0, 1))
+        with self.assertRaises(ValueError):
+            mx.moveaxis(x, (0, 0), (1, 2))
+        with self.assertRaises(ValueError):
+            mx.moveaxis(x, (0, 1), (2, 2))
         self.assertEqual(mx.swapaxes(x, 0, 2).shape, (4, 3, 2))
         self.assertEqual(x.swapaxes(0, 2).shape, (4, 3, 2))
 
@@ -1310,6 +1325,20 @@ class TestOps(mlx_tests.MLXTestCase):
 
         self.assertTrue(np.allclose(result, expected))
 
+    def test_float64_trigonometry_on_cpu(self):
+        values = [-(2.0**40), -(2.0**-30), 0.0, 2.0**-30, 0.125, 2.0**20 + 0.125, 1e100]
+        with mx.stream(mx.cpu):
+            for operation, oracle in ((mx.sin, math.sin), (mx.cos, math.cos)):
+                for size in (1, 3, 4, 7, 16):
+                    with self.subTest(operation=operation.__name__, size=size):
+                        inputs = [values[i % len(values)] for i in range(size)]
+                        expected = np.array([oracle(value) for value in inputs])
+                        actual = operation(mx.array(inputs, dtype=mx.float64))
+                        self.assertEqual(actual.dtype, mx.float64)
+                        np.testing.assert_array_max_ulp(
+                            np.array(actual), expected, maxulp=1
+                        )
+
     def test_degrees(self):
         a = mx.array(
             [0, math.pi / 4, math.pi / 2, math.pi, 3 * math.pi / 4, 2 * math.pi]
@@ -1682,6 +1711,7 @@ class TestOps(mlx_tests.MLXTestCase):
         for axis in [0, 1, -1]:
             parts = mx.unstack(a, axis=axis)
             expected = np.unstack(a_np, axis=axis)
+            self.assertIsInstance(parts, tuple)
             self.assertEqual(len(parts), len(expected))
             for p, e in zip(parts, expected):
                 self.assertTrue(np.array_equal(p, e))
@@ -4040,7 +4070,9 @@ class TestOps(mlx_tests.MLXTestCase):
     def test_broadcast_arrays(self):
         a = mx.array(1)
         b = mx.array(1.0)
-        a, b = mx.broadcast_arrays(a, b)
+        arrays = mx.broadcast_arrays(a, b)
+        self.assertIsInstance(arrays, tuple)
+        a, b = arrays
         self.assertEqual(a.shape, ())
         self.assertEqual(a.dtype, mx.int32)
         self.assertEqual(b.shape, ())

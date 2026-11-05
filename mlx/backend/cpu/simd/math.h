@@ -121,6 +121,13 @@ Simd<T, N> sincos(Simd<T, N> in) {
 // to libm instead. 2^23 keeps x * 4/pi under 2^24 with room to spare.
 template <bool Sine, typename T, int N>
 Simd<T, N> sincos_checked(Simd<T, N> x) {
+  if constexpr (std::is_same_v<T, double>) {
+    Simd<T, N> out;
+    for (int i = 0; i < N; ++i) {
+      out[i] = Sine ? std::sin(x[i]) : std::cos(x[i]);
+    }
+    return out;
+  }
   Simd<float, N> xf = x;
   if (any(abs(xf) > Simd<float, N>(8388608.0f))) {
     Simd<T, N> out;
